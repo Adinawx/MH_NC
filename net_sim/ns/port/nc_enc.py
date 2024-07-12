@@ -3,8 +3,8 @@ Implements a port with an output buffer, given an output rate and a buffer size 
 or the number of packets). This implementation uses the simple tail-drop mechanism to drop packets.
 """
 import simpy
-from ns.port.fifo_store import FIFO_Store
-
+from net_sim.ns.port.fifo_store import FIFO_Store
+import random  # For debug only. Erase eventually
 class NCEncoder:
     """Models an output port on a switch with a given rate and buffer size (in either bytes
     or the number of packets), using the simple tail-drop mechanism to drop packets.
@@ -120,6 +120,10 @@ class NCEncoder:
                 self.store_channel_stats.put(ff_ch)
             # End of enc code. Notice that I used a placeholder in order to remind ourselves that perhaps we want
             # to save the data actually used in the current step of the algorithm in separate buffers
+
+            self.out_ff.fec_type = random.choice(['FEC', 'RLNC'])
+
+
             if self.debug:
                 nc_enc_items = self.store_nc_enc.fifo_items()
                 channel_stats_items = self.store_channel_stats.fifo_items()
