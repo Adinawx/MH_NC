@@ -135,8 +135,6 @@ if __name__ == '__main__':
 
     env.run(until=timesteps)
 
-    # TODO: Add pct field: FEC
-    # TODO: Cancel one of the following fields: nc_id or nc_serial. their role is exactly the same and one is redundant
     # TODO: Add decoder (that deletes the packet from the buffer)
     # TODO: change _mem to _hist (from the word "history" in the store nem as in the buffer class)
     # TODO: Talk with Adina: I think it is better to have a "local" track of the history inside the nc_enc module. this means that the history is recorded twice: once in the nc_enc and the other in the bufffer_manager. What to do about it?
