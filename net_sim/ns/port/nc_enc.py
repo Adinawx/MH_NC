@@ -3,7 +3,9 @@ Implements a port with an output buffer, given an output rate and a buffer size 
 or the number of packets). This implementation uses the simple tail-drop mechanism to drop packets.
 """
 import simpy
-from ns.port.fifo_store import FIFO_Store
+from net_sim.ns.port.fifo_store import FIFO_Store
+import random  # For debug only. Erase eventually
+from acrlnc_node.ac_node import ACRLNC_Node
 
 class NCEncoder:
     """Models an output port on a switch with a given rate and buffer size (in either bytes
@@ -29,13 +31,16 @@ class NCEncoder:
         self.out_ff = None
         self.out_fb = None
         self.element_id = element_id
-        self.ff_packets_received = 0
-        self.ff_packets_dropped = 0
-        self.fb_packets_received = 0
-        self.fb_packets_dropped = 0
+        self.ff_packets_received = 0  # Number of packets received on the forward channel
+        self.ff_packets_dropped = 0  # Number of packets dropped on the forward channel
+        self.fb_packets_received = 0  # Numner of packets received on the feedback channel
+        self.fb_packets_dropped = 0  # Number of packets dropped on the feedback channel
         self.enc_default_len = enc_default_len
         self.channel_default_len = channel_default_len
         self.debug = debug
+
+        self.nc_node = ACRLNC_Node()
+        self.nc_node.reset(env)
 
         # Typically, the following FIFO_stores are used in order to pass the current packet to the nc encoder
         # (so, for example, len = 0 or 1):
@@ -69,6 +74,7 @@ class NCEncoder:
 
     def delete_pct_and_reindex(self):
         pass
+
     def run(self):
         """The generator function used in simulations."""
         while True:
@@ -79,6 +85,10 @@ class NCEncoder:
             if self.fb_packets_received > 0:
                 fb_packets = yield self.store_fb.get()
                 fb_ch = yield self.store_fb_ch.get()
+            else:
+                fb_packets = None
+                fb_ch = None
+
             if ff_packets.nc_header is not None:
                 self.store_ff_hist.put(ff_packets)
                 self.store_ff_ch_hist.put(ff_ch)
@@ -107,19 +117,25 @@ class NCEncoder:
             # Put the enc code here...
             input_window = [pct.time for pct in ff_packets_hist]
             if len(input_window) > 0:
-                self.out_ff.nc_header = [input_window[0], input_window[-1]]
-            else:
-                self.out_ff.nc_header = None
-            #
-            if self.fb_packets_received > 0:
-                curr_ch_state = ff_ch[-1] if isinstance(ff_ch, list) else ff_ch
-                self.out_fb.nc_header = curr_ch_state
+                self.out_ff.nc_header, self.out_fb.nc_header = self.nc_node.run(in_pt=ff_packets, in_fb=fb_ch)
+
+                # self.out_ff.nc_header = [input_window[0], input_window[-1]]
+            # else:
+            #     self.out_ff.nc_header = None
+            # #
+            # if self.fb_packets_received > 0:
+            #     curr_ch_state = ff_ch[-1] if isinstance(ff_ch, list) else ff_ch
+            #     self.out_fb.nc_header = curr_ch_state
 
             if ff_packets.nc_header is not None:
                 self.store_nc_enc.put(ff_packets)
                 self.store_channel_stats.put(ff_ch)
             # End of enc code. Notice that I used a placeholder in order to remind ourselves that perhaps we want
             # to save the data actually used in the current step of the algorithm in separate buffers
+
+            self.out_ff.fec_type = random.choice(['FEC', 'RLNC'])
+
+
             if self.debug:
                 nc_enc_items = self.store_nc_enc.fifo_items()
                 channel_stats_items = self.store_channel_stats.fifo_items()
@@ -132,7 +148,6 @@ class NCEncoder:
                     for curr_fb_ch in channel_stats_items:
                         print(f"{curr_fb_ch}")
                 print('-----------------------    END (nc)     ------------------------------------')
-
 
     def put_ff(self, packet, ch_state):
         """Sends a packet to this element."""

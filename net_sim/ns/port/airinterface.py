@@ -53,7 +53,8 @@ class AirInterface:
         if self.noise_type == 'delay_only':
             return (True for _ in iter(int, 1))
         elif self.noise_type == 'Gaussian':
-            random_gen = partial(random.gauss, noise_dict['mean'], noise_dict['variance'])  # Usage: next_value = next(random_gen)
+            random_gen = partial(random.gauss, noise_dict['mean'],
+                                 noise_dict['variance'])  # Usage: next_value = next(random_gen)
             return (random_gen() for _ in iter(int, 1))
         elif self.noise_type == 'erasure':
             p_err = noise_dict['p_e'][0]
@@ -105,7 +106,6 @@ class AirInterface:
                 if self.debug:
                     print("Dropped on wire #{} at {:.3f}: {}".format(
                         self.wire_id, self.env.now, packet))
-
 
     def put(self, packet):
         """ Sends a packet to this element. """

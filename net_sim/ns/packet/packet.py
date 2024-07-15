@@ -31,6 +31,7 @@ class Packet:
         identifiers for the source and destination
     flow_id: int or str
         an integer or string that can be used to identify a flow
+    fec_type: FEC type: support of two types of FEC: FEC (nc repetition code), of NC (nc code, according to the window state)
     """
 
     def __init__(
@@ -49,6 +50,7 @@ class Packet:
         nc_header=None,  # MY CHANGE 27/5
         nc_serial=None,  # MY CHANGES 30/5
         msg_type=None,  # feefforward (ff) or feedback (fb) MY CHANGE 3/6
+        fec_type=None,  # MY CHANGE 27/
     ):
         self.time = time
         self.delivered_time = last_ack_time
@@ -74,7 +76,12 @@ class Packet:
         else:
             self.nc_header = nc_header
         self.nc_serial = nc_serial  # MY CHANGES 30/5
+
         self.msg_type = msg_type  # feefforward (ff) or feedback (fb) MY CHANGE 3/6
+        if self.src == "s_ff" or self.src == "d_fb" or self.src == 'fb':  # MY CHANGE 13/7
+            self.fec_type = None
+        else:
+            self.fec_type = fec_type
 
         self.is_app_limited = False
         self.color = None  # Used by the two-rate tri-color token bucket shaper
@@ -84,4 +91,4 @@ class Packet:
         self.perhop_time = {}  # used by Port to record per-hop arrival times
 
     def __repr__(self):
-        return f"id: {self.packet_id}, nc id: {self.nc_serial}, src: {self.src}, time: {self.time}, size: {self.size}, header: {self.nc_header}, type: {self.msg_type}"  # MY CHANGE 27/5
+        return f"id: {self.packet_id}, nc id: {self.nc_serial}, src: {self.src}, FEC type: {self.fec_type}, size: {self.size}, header: {self.nc_header}, type: {self.msg_type}"  # MY CHANGE 27/5

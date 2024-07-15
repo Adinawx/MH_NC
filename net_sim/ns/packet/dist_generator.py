@@ -15,7 +15,7 @@ fb - feedback
 s_ff - generates the packets to be fed into the source node
 d_fb - generates the packets to be fed into the destination node (as dummy packets)
 """
-from ns.packet.packet import Packet
+from net_sim.ns.packet.packet import Packet
 
 
 class DistPacketGenerator:
@@ -56,6 +56,7 @@ class DistPacketGenerator:
         nc_header=None,  # MY CHANGES 27/5
         nc_serial=None,  # MY CHANGES 30/5
         msg_type=None,  # feefforward (ff) or feedback (fb) MY CHANGE 3/6
+        fec_type=None
     ):
         self.element_id = element_id
         self.env = env
@@ -82,6 +83,8 @@ class DistPacketGenerator:
             self.nc_serial = nc_serial  # MY CHANGES 30/5
         self.msg_type = msg_type
 
+        self.fec_type = fec_type
+
         self.debug = debug
 
     def run(self):
@@ -99,6 +102,7 @@ class DistPacketGenerator:
                 nc_header=self.nc_header,
                 nc_serial=self.nc_serial,
                 msg_type=self.msg_type,
+                fec_type=self.fec_type,
             )
 
             if packet.msg_type == 's_ff':

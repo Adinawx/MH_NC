@@ -1,4 +1,5 @@
-from encoder_new import Encoder
+from acrlnc_node.encoder_new import Encoder
+from ns.port.fifo_store import FIFO_Store
 
 
 class ACRLNC_Node():
@@ -10,7 +11,6 @@ class ACRLNC_Node():
     ### Each packet has a FEC flag: 0 = Data, 1 = FEC.
 
     def __init__(self):
-        self.T = None
         self.t = None
         self.RTT = None
 
@@ -26,16 +26,20 @@ class ACRLNC_Node():
         self.in_fb = None  # Feedback from the receiver, 0 = erasure, 1 = success, None = no feedback, vector of size Memory.
         self.out_fb = None  # Feedback to the sender, 0 = erasure, 1 = success, None = no feedback, int.
 
-    def reset(self):
-        self.T = 0
+    def reset(self, env, RTT=4):
+
+        # Time:
+        self.RTT = RTT
         self.t = 0
-        self.RTT = 0
 
-        self.ct_buffer = []
+        # Packets Buffers:
+        self.ct_buffer = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
+        self.pt_buffer = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
+        self.erasure_buffer = FIFO_Store(env, capacity=3, memory_size=float('inf'), debug=False)
 
-        self.pt_buffer = []
         self.arrival_num = 0
 
+        # Single Packets:
         self.in_pt = None
         self.out_ct = None
         self.in_fb = None
@@ -65,7 +69,7 @@ class ACRLNC_Node():
         self.out_fb[1] = self.decode()
 
         # Update the out buffer:
-        ct, type = self.enc.encode(self.pt_buffer, self.ct_buffer, self.erasure_buffer)
+        ct, type = self.enc.run(self.pt_buffer, self.ct_buffer, self.erasure_buffer)
         self.out_ct.header = [ct[0], ct[1]]
         if type == 'FEC' or type == 'FB-FEC' or type == 'EOW':
             self.out_ct.fec = True
@@ -90,25 +94,30 @@ class ACRLNC_Node():
             self.pt_buffer = self.pt_buffer[dec_id+1:]
             # Update the arrival number:
             self.arrival_num -= dec  # TODO: Check.
-            return True # Decoded packet
+            return True  # Decoded packet
         else:
-            return False # No decoded packet
+            return False  # No decoded packet
 
     def update_pt_buffer_end(self):
         if self.in_pt is not None:  # Packet Arrives:
+
             # A new packet OR a relevant FEC packet arrives:
             if not self.in_pt.fec or (self.in_pt.fec and self.accept_fec()):
+
                 # Update NC id:
                 last_nc_id = self.pt_buffer[-1].nc_id
                 self.in_pt.nc_id = last_nc_id + 1
+
                 # Insert the packet to the buffer:
                 self.pt_buffer.append(self.in_pt)
+
                 # Update the arrival number:
                 self.arrival_num += 1
-            return True # Packet is accepted.
+
+            return True  # Packet is accepted.
 
         else:
-            return False # Packet is not accepted.
+            return False  # Packet is not accepted.
 
     def update_ack(self):
         pt_id = self.in_fb[0][0]
@@ -117,12 +126,12 @@ class ACRLNC_Node():
         return ack
 
     def is_reception(self):
-        self.erasure_buffer[:-1] = self.erasure_buffer[1:]
+
         if self.in_pt is not None:
-            self.erasure_buffer[-1] = 1
+            self.erasure_buffer.put(1)
             return 1  # ACK
         else:
-            self.erasure_buffer[-1] = 0
+            self.erasure_buffer.put(0)
             return 0  # NACK
 
     def decode(self):

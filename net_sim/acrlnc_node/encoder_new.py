@@ -4,7 +4,6 @@ class Encoder:
 
     def __init__(self):
         self.t = 0
-        self.T = 0
         self.RTT = 0
 
         self.ct_buffer = None
@@ -29,6 +28,10 @@ class Encoder:
 
         self.w_min = 0
         self.w_max = 0
+
+    def RTT_set(self, RTT):
+        self.RTT = RTT
+        return
 
     def update_t(self):
         self.t += 1
@@ -86,7 +89,7 @@ class Encoder:
 
         return
 
-    def encode(self, p_buffer, c_buffer, erasures_buffer):
+    def run(self, p_buffer, c_buffer, erasures_buffer):
         self.update_t()
 
         self.pt_buffer = p_buffer
