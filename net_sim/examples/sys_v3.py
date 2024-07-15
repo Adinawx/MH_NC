@@ -9,14 +9,14 @@ from random import expovariate
 import os
 import sys
 import simpy
-from ns.packet.dist_generator import DistPacketGenerator
-from ns.packet.sink import PacketSink
-from ns.port.airinterface import AirInterface
-from ns.port.port import Port
-from ns.port.buffer_manager import BufferManeger
-from ns.port.nc_enc import NCEncoder
-from ns.port.nc_node import NC_node
-from ns.port.termination_node import Termination_node
+from net_sim.ns.packet.dist_generator import DistPacketGenerator
+from net_sim.ns.packet.sink import PacketSink
+from net_sim.ns.port.airinterface import AirInterface
+from net_sim.ns.port.port import Port
+from net_sim.ns.port.buffer_manager import BufferManeger
+from net_sim.ns.port.nc_enc import NCEncoder
+from net_sim.ns.port.nc_node import NC_node
+from net_sim.ns.port.termination_node import Termination_node
 
 
 def constArrival():
@@ -135,7 +135,6 @@ if __name__ == '__main__':
 
     env.run(until=timesteps)
 
-    # TODO: Add pct field: FEC
     # TODO: Add decoder (that deletes the packet from the buffer)
     # TODO: change _mem to _hist (from the word "history" in the store nem as in the buffer class)
     # TODO: Talk with Adina: I think it is better to have a "local" track of the history inside the nc_enc module. this means that the history is recorded twice: once in the nc_enc and the other in the bufffer_manager. What to do about it?
