@@ -1,6 +1,6 @@
 """
 A basic example that connects two packet generators to a network wire with
-a propagation delay distribution, and then to a packet sink.
+a propagation dec_timea distribution, and then to a packet sink.
 """
 
 import argparse
@@ -13,7 +13,7 @@ from ns.port.wire import Wire
 
 
 def delay_dist():
-    """ Network wires experience a constant propagation delay of 0.1 seconds. """
+    """ Network wires experience a constant propagation dec_timea of 0.1 seconds. """
     return 0.1
 
 

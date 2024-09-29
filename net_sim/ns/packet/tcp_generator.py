@@ -42,9 +42,9 @@ class TCPPacketGenerator:
         self.last_ack = 0
         # the count of duplicate acknolwedgments
         self.dupack = 0
-        # deviation of the RTT
+        # deviation of the rtt
         self.rtt_var = 0.0
-        # smoothed RTT
+        # smoothed rtt
         self.smoothed_rtt = 0.0
         # the retransmission timeout
         self.rto = 1.0
@@ -221,7 +221,7 @@ class TCPPacketGenerator:
             return
 
         if self.dupack == 0:
-            # new ack received, update the RTT estimate and the retransmission timout
+            # new ack received, update the rtt estimate and the retransmission timout
             sample_rtt = self.env.now - ack.time
 
             # Authoritative sources for RTO calculation
@@ -236,7 +236,7 @@ class TCPPacketGenerator:
             alpha = 0.125
             beta = 0.25
 
-            # calculates the deviation (RTTVAR) of the RTT to account for
+            # calculates the deviation (RTTVAR) of the rtt to account for
             # variations in the network
             if self.rtt_var == 0.0:
                 self.rtt_var = sample_rtt / 2.0

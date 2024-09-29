@@ -6,7 +6,7 @@ class Encoder:
         self.fec_print = None
         self.T = None
         self.t = None
-        self.RTT = None
+        self.rtt = None
         self.tran_ind = None
         self.last_relev_slot = None
         self.transmission_line = None
@@ -28,11 +28,11 @@ class Encoder:
         self.fec_num = None
         self.status_hist = None
 
-    def reset(self, T, RTT, th):
+    def reset(self, T, rtt, th):
         # Time Variables
         self.T = T  # Max number of transmissions
         self.t = 0  # Current time
-        self.RTT = RTT  # Round Trip Time
+        self.rtt = rtt  # Round Trip Time
 
         # Window Variables - Determines c_t
         self.w_start = 1  # First raw packet in the current window
@@ -44,7 +44,7 @@ class Encoder:
         self.transmission_line = torch.zeros([T, 2])  # Scheduled Transmissions: [w_start, w_end], at time i transmitting the i's row of this vector.
         self.redun_track = torch.ones(T)  # 1=redundancy, 0=new packet in combination
         self.feedback_hist = torch.zeros([T, 2])   # Log of the feedbacks [ack, dec]. Used to update w_start.
-        self.transmission_times_hist = torch.zeros(T)  # At index t, the first time raw packet p_t is transmitted.Used to comupte the delay.
+        self.transmission_times_hist = torch.zeros(T)  # At index t, the first time raw packet p_t is transmitted.Used to comupte the dec_timea.
 
         # A-priori Criteria Variables
         self.fec_flag = 1  # 1 is no fec transmission, 0 is FEC transmission
@@ -52,17 +52,17 @@ class Encoder:
         self.fec_print = False  # Flag for printing a FEC transmission
 
         # Posteriori Criteria Variables
-        self.added_dof = 0  # Number of ACK new relevant packets before t-RTT
-        self.missing_dof = 0  # Number of NACK new relevant packets before t-RTT
-        self.c_t_new = 0  # Number of new packets in the last RTT
-        self.c_t_same = 0  # Number of same packets in the last RTT
+        self.added_dof = 0  # Number of ACK new relevant packets before t-rtt
+        self.missing_dof = 0  # Number of NACK new relevant packets before t-rtt
+        self.c_t_new = 0  # Number of new packets in the last rtt
+        self.c_t_same = 0  # Number of same packets in the last rtt
         self.th = th  # Threshold for the feedback criterion
-        self.pred = torch.zeros([1, RTT])  # Prediction of the erasure probability
+        self.pred = torch.zeros([1, rtt])  # Prediction of the erasure probability
         self.eps = 0  # Prediction of the erasure probability
         self.criterion = False  # Feedback FEC criterion. If True, FB-FEC is transmitted.
 
         # End Of Window Variables
-        self.o = int(1.5 * (RTT - 1))  # Maximum allowed number of packets in the window
+        self.o = int(1.5 * (rtt - 1))  # Maximum allowed number of packets in the window
 
         # Log Variables
         self.status_hist = []  # Log of the status of each transmission - No FB, FEC, FB-FEC, AddPacket, EoW
@@ -70,7 +70,7 @@ class Encoder:
     def read_fb_and_update_w_start(self, t_minus:int) -> tuple:
         """
         Read the feedback at time t_minus and update w_start accordingly.
-        :param t_minus: time to read the feedback (t-RTT)
+        :param t_minus: time to read the feedback (t-rtt)
         :return: [ack, dec] = [feedback, last decoded packet at t_minus]
         """
         ack = None
@@ -104,8 +104,8 @@ class Encoder:
         Update the missing and added degrees of freedom by the feedback and according to the last relevant slot.
         :return: [missing_dof, added_dof] = [#Nack of New packets before last relevant slot, #Ack of Redundant packets before last relevant slot]
         """
-        if self.last_relev_slot <= self.t - self.RTT:
-            t_minus = self.t - self.RTT
+        if self.last_relev_slot <= self.t - self.rtt:
+            t_minus = self.t - self.rtt
             all_fb = self.feedback_hist[self.last_relev_slot: t_minus, 0]
             self.missing_dof = (1 - all_fb) @ (1 - self.redun_track[self.last_relev_slot: t_minus])  # Nack x New
             self.added_dof = all_fb @ self.redun_track[self.last_relev_slot: t_minus]  # Ack x redun
@@ -117,11 +117,11 @@ class Encoder:
 
     def update_ct_new_same(self) -> tuple:
         """
-        Update the number of new and same packets in the last RTT.
-        :return: [c_t_new, c_t_same] = [Number of New packets in the last RTT, Number of Redundant packets in the last RTT]
+        Update the number of new and same packets in the last rtt.
+        :return: [c_t_new, c_t_same] = [Number of New packets in the last rtt, Number of Redundant packets in the last rtt]
         """
-        if self.last_relev_slot <= self.t - self.RTT:
-            t_minus = self.t - self.RTT
+        if self.last_relev_slot <= self.t - self.rtt:
+            t_minus = self.t - self.rtt
         else:
             t_minus = self.last_relev_slot
 
@@ -134,7 +134,7 @@ class Encoder:
         """
         Get the prediction of the erasure probability.
         :param pred: vector of predictions of the erasure probability
-        :return: eps: erasure rate in the last RTT time slots.
+        :return: eps: erasure rate in the last rtt time slots.
         """
         self.pred = pred
         return self.pred
@@ -143,15 +143,15 @@ class Encoder:
         """
         Update the prediction of the erasure probability.
         :param pred: vector of predictions of the erasure probability
-        :return: eps: erasure rate in the last RTT time slots.
+        :return: eps: erasure rate in the last rtt time slots.
         """
-        self.eps = torch.mean(1-self.pred[0, 1:self.RTT])
+        self.eps = torch.mean(1 - self.pred[0, 1:self.rtt])
         return self.eps
 
     def fb_criterion(self):
         # Initialize
         criterion = False
-        win_fec_size = int(self.RTT)
+        win_fec_size = int(self.rtt)
         if self.t == 0:
             self.fec_flag = 1
 
@@ -163,7 +163,7 @@ class Encoder:
             self.update_eps()
 
             if self.t % win_fec_size == 0:  # end of generation, start fec transmission
-                self.fec_num = self.c_t_new * self.eps #(self.RTT-1) * eps0
+                self.fec_num = self.c_t_new * self.eps #(self.rtt-1) * eps0
                 # if self.fec_num - 1 < 0:  # Force at least one fec:
                 #     self.fec_num += 1
                 self.fec_flag = 0  # 0 is fec transmission, 1 is no fec transmission

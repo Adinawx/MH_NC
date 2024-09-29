@@ -10,7 +10,7 @@ We see from the output that, if we simulate to 20 seconds, only four packets are
 sink by the time the simulation is stopped (the simulation can be resumed with just another call
 to the run() method). In addition to the debugging output for each packet received at the sink,
 we have the information from the packet sink and switch port. Note how the first 100 byte packet
-incurs a delay of 4 seconds (due to the 200 bps line rate) and also the received and dropped packet
+incurs a dec_timea of 4 seconds (due to the 200 bps line rate) and also the received and dropped packet
 counts.
 """
 import simpy

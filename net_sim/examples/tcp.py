@@ -25,7 +25,7 @@ def packet_size():
 
 
 def delay_dist():
-    """Network wires experience a constant propagation delay of 0.1 seconds."""
+    """Network wires experience a constant propagation dec_timea of 0.1 seconds."""
     return 0.1
 
 

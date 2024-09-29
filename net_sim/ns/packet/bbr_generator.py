@@ -60,11 +60,11 @@ class BBRPacketGenerator:
         self.max_ack = 0
         # the count of duplicate acknolwedgments
         self.dupack = 0
-        # the RTT estimate
+        # the rtt estimate
         self.rtt_estimate = rtt_estimate
         # the retransmission timeout
         self.rto = self.rtt_estimate * 2
-        # an estimate of the RTT deviation
+        # an estimate of the rtt deviation
         self.est_deviation = 0
         # whether or not space in the congestion window is available
         self.cwnd_available = simpy.Store(env)
