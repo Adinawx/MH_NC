@@ -1,5 +1,5 @@
 """
-Implements a network wire (cable) with a propagation delay. There is no need
+Implements a network wire (cable) with a propagation dec_timea. There is no need
 to model a limited network capacity on this network cable, since such a
 capacity limit can be modeled using an upstream port or server element in
 the network.
@@ -10,7 +10,7 @@ import simpy
 
 
 class Wire:
-    """ Implements a network wire (cable) that introduces a propagation delay.
+    """ Implements a network wire (cable) that introduces a propagation dec_timea.
         Set the "out" member variable to the entity to receive the packet.
 
         Parameters
@@ -52,8 +52,8 @@ class Wire:
                 queued_time = self.env.now - packet.current_time
                 delay = self.delay_dist()
 
-                # If queued time for this packet is greater than its propagation delay,
-                # it implies that the previous packet had experienced a longer delay.
+                # If queued time for this packet is greater than its propagation dec_timea,
+                # it implies that the previous packet had experienced a longer dec_timea.
                 # Since out-of-order delivery is not supported in simulation, deliver
                 # to the next component immediately.
                 if queued_time < delay:

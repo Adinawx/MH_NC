@@ -1,6 +1,6 @@
 """
 A basic example that connects two packet generators to a network wire with
-a propagation delay distribution, and then to a packet sink.
+a propagation dec_timea distribution, and then to a packet sink.
 """
 
 from functools import partial
@@ -28,10 +28,11 @@ def constPacketSize():
 
 
 def constDelay():
-    return 3.0  # Delay [steps]
+    return 2.0  # Delay [steps]
 
 
 def noise_param(noise_type, *args):
+
     if noise_type == 'delay_only':
         noise_dict = {
             'type': noise_type,
@@ -110,7 +111,7 @@ if __name__ == '__main__':
     ff_channels = []
     fb_channels = []
     for curr_ch in range(num_of_nodes-1):
-        ff_channels.append(AirInterface(env, delay_dist=constDelay, noise_dict=noise_param('from_mat'), wire_id=curr_ch, debug=False))
+        ff_channels.append(AirInterface(env, delay_dist=constDelay, noise_dict=noise_param('erasure', [0]), wire_id=curr_ch, debug=False))
         fb_channels.append(AirInterface(env, delay_dist=constDelay, noise_dict=noise_param('delay_only'), wire_id=curr_ch, debug=False))
 
     # Terminations

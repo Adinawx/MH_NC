@@ -1,5 +1,5 @@
 """
-Implements a delayer that adds arbitrary delay within [0, D] without changing the order
+Implements a delayer that adds arbitrary dec_timea within [0, D] without changing the order
 of packets arrived.
 """
 from copy import copy
@@ -15,7 +15,7 @@ class Delayer:
         env: simpy.Environment
             The simulation environment.
         max_delay:
-            The maximum amount of delay.
+            The maximum amount of dec_timea.
     """
 
     def __init__(self, env, max_delay):

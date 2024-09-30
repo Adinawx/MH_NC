@@ -208,7 +208,7 @@ In the *Basic Concepts* section of this tutorial, pay attention to three simple 
 The first is used in our component's constructor to add this component's `run()` method to the `SimPy` environment. For example, in `scheduler/drr.py`:
 
 ```python
-self.action = env.process(self.run())
+self.action = env.process(self.run(,, )
 ```
 
 Keep in mind that not all network components need to be run as a *SimPy* process (more discussions on processes later). While traffic shapers, packet generators, ports (buffers), port monitors, and packet schedulers definitely should be implemented as processes, a flow demultiplexer, a packet sink, a traffic marker, or a traffic splitter do not need to be modeled as processes. They just represent additional processing on packets inside a network.
@@ -218,7 +218,7 @@ Keep in mind that not all network components need to be run as a *SimPy* process
 The second call, `env.run()`, is used by our examples to run the environment after connecting all the network components together. For example, in `examples/drr.py`:
 
 ```python
-env.run(until=100)
+env.run(,,
 ```
 
 This call simply runs the environment for 100 seconds.

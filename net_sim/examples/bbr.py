@@ -24,12 +24,12 @@ def packet_size():
 
 
 def zero_delay():
-    """Network wires that experience a constant propagation delay of 0 seconds."""
+    """Network wires that experience a constant propagation dec_timea of 0 seconds."""
     return 0
 
 
 def const_delay():
-    """Network wires that experience a constant propagation delay of 0.1 seconds."""
+    """Network wires that experience a constant propagation dec_timea of 0.1 seconds."""
     return 0.1
 
 

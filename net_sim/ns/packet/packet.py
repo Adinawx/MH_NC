@@ -77,9 +77,11 @@ class Packet:
             self.nc_header = nc_header
         self.nc_serial = nc_serial  # MY CHANGES 30/5
 
-        self.msg_type = msg_type  # feefforward (ff) or feedback (fb) MY CHANGE 3/6
-        if self.src == "s_ff" or self.src == "d_fb" or self.src == 'fb':  # MY CHANGE 13/7
+        self.msg_type = msg_type  # feedforward (ff) or feedback (fb) MY CHANGE 3/6
+        if self.src == "d_fb" or self.src == 'fb':  # MY CHANGE 13/7
             self.fec_type = None
+        elif self.src == "s_ff":  # ADINA CHANGE 15/7
+            self.fec_type = "NEW"
         else:
             self.fec_type = fec_type
 
@@ -91,4 +93,6 @@ class Packet:
         self.perhop_time = {}  # used by Port to record per-hop arrival times
 
     def __repr__(self):
-        return f"id: {self.packet_id}, nc id: {self.nc_serial}, src: {self.src}, FEC type: {self.fec_type}, size: {self.size}, header: {self.nc_header}, type: {self.msg_type}"  # MY CHANGE 27/5
+        # return f"id: {self.packet_id}, nc id: {self.nc_serial}, src: {self.src}, FEC type: {self.fec_type}, size: {self.size}, header: {self.nc_header}, type: {self.msg_type}"  # MY CHANGE 27/5
+        return f"(Gen time: {self.time}), id: {self.packet_id}, nc id: {self.nc_serial}, src: {self.src}, FEC type: {self.fec_type}, header: {self.nc_header}, type: {self.msg_type}"  # , size: {self.size} # New - 18/8
+

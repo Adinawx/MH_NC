@@ -1,7 +1,7 @@
 #
 # """
 # A basic example that connects two packet generators to a network wire with
-# a propagation delay distribution, and then to a packet sink.
+# a propagation dec_timea distribution, and then to a packet sink.
 # """
 #
 from functools import partial
@@ -27,8 +27,9 @@ def combine_dicts(dict1, dict2):
     return combined_dict
 #
 class NC_node:
-    def __init__(self, env, ind, **kwargs):
+    def __init__(self, env, cfg, ind, **kwargs):
         self.env = env
+        self.cfg = cfg
         self.ind = ind
 
         # Init default values (for the class):
@@ -55,7 +56,7 @@ class NC_node:
         # Initialize buffers, packet generators, and encoders
         self.ff_buffer = BufferManeger(env, **self.ff_buffer_params)
         self.ff_pct = DistPacketGenerator(env,  **self.ff_pct_params)
-        self.en_enc = NCEncoder(env, **self.nc_enc_params)
+        self.en_enc = NCEncoder(env, cfg, **self.nc_enc_params)
         self.fb_buffer = BufferManeger(env, **self.fb_buffer_params)
         self.fb_pct = DistPacketGenerator(env,  **self.fb_pct_params)
 

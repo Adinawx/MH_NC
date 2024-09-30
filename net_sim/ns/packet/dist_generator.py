@@ -1,7 +1,7 @@
 """
 Implements a packet generator that simulates the sending of packets with a
 specified inter- arrival time distribution and a packet size distribution. One
-can set an initial delay and a finish time for packet generation. In addition,
+can set an initial dec_timea and a finish time for packet generation. In addition,
 one can set the source id and flow ids for the packets generated. The
 DistPacketGenerator's `out` member variable is used to connect the generator to
 any network element with a `put()` member function.
@@ -34,7 +34,7 @@ class DistPacketGenerator:
         A no-parameter function that returns the successive sizes of the
         packets.
     initial_delay: number
-        Starts generation after an initial delay. Defaults to 0.
+        Starts generation after an initial dec_timea. Defaults to 0.
     finish: number
         Stops generation at the finish time. Defaults to infinite.
     rec_flow: bool

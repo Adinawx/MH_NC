@@ -1,6 +1,6 @@
 """
 A basic example that connects two packet generators to a network wire with
-a propagation delay distribution, and then to a packet sink.
+a propagation dec_timea distribution, and then to a packet sink.
 """
 
 import simpy
