@@ -10,7 +10,6 @@ from utils.config import CFG
 from utils.config_setup import Config
 import numpy as np
 
-
 class NCEncoder:
     """Models an output port on a switch with a given rate and buffer size (in either bytes
     or the number of packets), using the simple tail-drop mechanism to drop packets.
@@ -190,6 +189,22 @@ class NCEncoder:
 
             # End of enc code. Notice that I used a placeholder in order to remind ourselves that perhaps we want
             # to save the data actually used in the current step of the algorithm in separate buffers
+
+#             self.out_ff.fec_type = random.choice(['FEC', 'RLNC'])
+
+
+#             if self.debug:
+#                 nc_enc_items = self.store_nc_enc.fifo_items()
+#                 channel_stats_items = self.store_channel_stats.fifo_items()
+
+#                 print('-----------------------    FF (nc)   ------------------------------------')
+#                 if len(nc_enc_items) > 0:
+#                     print(f"[{nc_enc_items[0].nc_serial} -> {nc_enc_items[-1].nc_serial}]")
+#                 print('-----------------------    FB (nc)     ------------------------------------')
+#                 if self.fb_packets_received > 0:
+#                     for curr_fb_ch in channel_stats_items:
+#                         print(f"{curr_fb_ch}")
+#                 print('-----------------------    END (nc)     ------------------------------------')
 
             # self.out_ff.fec_type = random.choice(['FEC', 'NEW'])
 
