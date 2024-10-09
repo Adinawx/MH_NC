@@ -188,8 +188,15 @@ class ACRLNC_Node():
         # In packet info:
         self.in_pt = in_packet_info
 
-        if in_packet_recep_flag:
+        # Do not accept packets that contain nothing.
+        if isinstance(in_packet_info.nc_header, list):
+            if in_packet_info.nc_header[1][0] is None:
+                return
+        else:
+            if in_packet_info.nc_header is None:
+                return
 
+        if in_packet_recep_flag:
             # Accept the packet:
             if self.in_pt.fec_type == 'NEW' or (self.in_pt.fec_type != 'NEW' and self.accept_fec()):
                 # Update the nc_id:
@@ -326,15 +333,7 @@ class ACRLNC_Node():
 
     def epsilon_estimation(self):
 
-        # Eps estimation.
-        # if self.in_fb[1] is not None:  # If there is a feedback.
-        #     self.eps_est.update_acks_tracker(self.in_fb[1])
-        #     curr_ch = 0 if self.node_type == 'Transmitter' else int(self.in_pt.src[-1])+1
-        #     eps = self.eps_est.eps_estimate(t=self.t, ch=curr_ch)
-        # else:
-        #     eps = 0  # No feedback - assume all packets arrived.
-
-        if self.in_fb[1] is not None: # If there is a feedback.
+        if self.in_fb[1] is not None:  # If there is a feedback.
             self.eps_est.update_acks_tracker(self.in_fb[1])
         curr_ch = 0 if self.node_type == 'Transmitter' else int(self.in_pt.src[-1])+1
         eps = self.eps_est.eps_estimate(t=self.t, ch=curr_ch)

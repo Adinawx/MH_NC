@@ -171,7 +171,6 @@ class NCEncoder:
                     dec_times = np.array(self.ac_node.dec_times.fifo_items())
                     np.save(r"{}\dec_times.npy".format(res_folder), dec_times)
 
-
             ####################################################################################################
             # input_window = [pct.time for pct in ff_packets_hist]
             # if len(input_window) > 0:

@@ -170,7 +170,8 @@ class Encoder:
             ack = in_fb[1]
 
             for ind_c, ct in enumerate(self.ct_buffer.fifo_items()):
-                if ct[0] == self.p_id - int(self.rtt + self.cfg.param.num_of_nodes - 1):
+                channels_num = len(self.cfg.param.er_rates)
+                if ct[0] == self.p_id - int(self.rtt + channels_num):
                     self.ct_buffer.fifo_items()[ind_c][3] = ack
                     break
 

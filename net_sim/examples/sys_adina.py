@@ -127,7 +127,7 @@ def run_1(cfg):
     default_params['en_enc']['debug'] = cfg.param.debug
 
     # Topology
-    num_of_nodes = cfg.param.num_of_nodes
+    num_of_nodes = len(cfg.param.er_rates)+1
 
     # -------------
     # Components: |
@@ -141,7 +141,7 @@ def run_1(cfg):
     ff_channels = []
     fb_channels = []
     for curr_ch in range(num_of_nodes - 1):
-        eps = cfg.param.er_rate[curr_ch]
+        eps = cfg.param.er_rates[curr_ch]
 
         if er_load == 'erasure':
             ff_channels.append(
@@ -219,88 +219,90 @@ def run():
 
     # Config params:
     rep = cfg.param.rep
-    rtt = cfg.param.rtt
-    num_of_nodes = cfg.param.num_of_nodes
+    channels_num = len(cfg.param.er_rates)
     timesteps = cfg.param.timesteps
+    rtt_list = cfg.param.rtt
+    num_of_rtt = len(rtt_list)
 
     # Allocate arrays for results
-    mean_delay = np.zeros([rep])
-    max_delay = np.zeros([rep])
-    eta = np.zeros([rep])
+    mean_delay = np.zeros([num_of_rtt, rep])
+    max_delay = np.zeros([num_of_rtt, rep])
+    eta = np.zeros([num_of_rtt, rep])
 
-    run_1.counter = 0
-    for r in range(rep):
-        print(f"---Repetition {r + 1}---")
+    for rtt_idx, rtt in enumerate(rtt_list):
 
-        # When reading data from a file, determine here the relevant path, AAA=Channel number and BBB=eps.
-        cfg.param.er_series_path = f"{cfg.param.project_folder}" \
-               f"\\Data\\{cfg.param.er_type}\\AAA\\" \
-               f"erasure_series_eps_BBB_series_{r}.csv"
+        run_1.counter = 0
+        for r in range(rep):
+            print(f"---Repetition {r + 1}---")
 
-        time1 = time.time()
-        run_1(cfg)
-        time2 = time.time()
-        print(f"time: {time2 - time1}")
+            # When reading data from a file, determine here the relevant path, AAA=Channel number and BBB=eps.
+            cfg.param.er_series_path = f"{cfg.param.project_folder}" \
+                   f"\\Data\\{cfg.param.er_type}\\AAA\\" \
+                   f"erasure_series_eps_BBB_series_{r}.csv"
 
-        send_times = np.load(f"{new_folder}\\tran_times.npy")
-        dec_times = np.load(f"{new_folder}\\dec_times.npy")
-        last_dec = dec_times.shape[0]
+            time1 = time.time()
+            run_1(cfg)
+            time2 = time.time()
+            print(f"time: {time2 - time1}")
 
-        erasures_hist = np.zeros([rep, num_of_nodes - 1, timesteps])
-        for n in range(num_of_nodes-1):
-            in_delay = int(n*(rtt/2+1))  # Each node receives the first packet after n*(rtt/2+1) timesteps.
-            erasures_hist[r, n, in_delay:] = np.load(f"{new_folder}\\erasures_ch{n}.npy")
-        erasures_num = [int(np.sum(1-erasures_hist[r, n, int(n*(rtt/2+1)):])) for n in range(num_of_nodes-1)] # TODO: A bug in the erasures log.
+            send_times = np.load(f"{new_folder}\\tran_times.npy")
+            dec_times = np.load(f"{new_folder}\\dec_times.npy")
+            last_dec = dec_times.shape[0]
 
-        if last_dec == 0:
-            print("No packets were decoded")
-            mean_delay[r] = np.nan
-            max_delay[r] = np.nan
-            eta[r] = np.nan
-            continue
+            erasures_hist = np.zeros([rep, channels_num, timesteps])
+            for n in range(channels_num):
+                in_delay = int(n*(rtt/2+1))  # Each node receives the first packet after n*(rtt/2+1) timesteps.
+                erasures_hist[r, n, in_delay:] = np.load(f"{new_folder}\\erasures_ch{n}.npy")
+            erasures_num = [int(np.sum(1-erasures_hist[r, n, int(n*(rtt/2+1)):])) for n in range(channels_num)] # TODO: A bug in the erasures log.
 
-        # delay_i = dec_times[:last_dec] - np.arange(last_dec) - (num_of_nodes-1)
-        delay_i = dec_times[:last_dec] - send_times[:last_dec] - (num_of_nodes-1)
+            if last_dec == 0:
+                print("No packets were decoded")
+                mean_delay[r] = np.nan
+                max_delay[r] = np.nan
+                eta[r] = np.nan
+                continue
 
-        mean_delay[r] = np.mean(delay_i, axis=0)
-        max_delay[r] = np.max(delay_i)
-        eta[r] = last_dec / (timesteps - (num_of_nodes) * rtt / 2)  # minus: due to the inherent 1 delay of each node.
+            # delay_i = dec_times[:last_dec] - np.arange(last_dec) - channels_num
+            delay_i = dec_times[:last_dec] - send_times[:last_dec] - channels_num
 
+            eta[rtt_idx, r] = last_dec / (timesteps - (channels_num + 1) * rtt / 2)  # +1: due to the inherent 1 delay of each node.
+            mean_delay[rtt_idx, r] = np.mean(delay_i, axis=0)
+            max_delay[rtt_idx, r] = np.max(delay_i)
+
+            print(f"\n")
+            print(f"last dec packet: {last_dec}")
+            # print(f"erasures num: {erasures_num}")
+            print(f"eta: {eta[rtt_idx, r]:.2f}")
+            print(f"mean delay: {mean_delay[rtt_idx, r]:.2f}")
+            print(f"max delay: {max_delay[rtt_idx, r]:.2f}")
+
+            run_1.counter += 1
+
+        # Print final mean:
+        er_rates = cfg.param.er_rates
         print(f"\n")
-        print(f"last dec packet: {last_dec}")
-        # print(f"erasures num: {erasures_num}")
-        print(f"eta: {eta[r]:.2f}")
-        print(f"mean delay: {mean_delay[r]:.2f}")
-        print(f"max delay: {max_delay[r]:.2f}")
+        print("----Final Results----")
+        print(f"RTT={rtt}")
+        print(f"Channel rates: {1 - np.array(er_rates)}")
+        print(f"Mean eta: {np.mean(eta[rtt_idx, :]):.2f} +- {np.std(eta[rtt_idx, :]):.2f}")
+        print(f"Mean delay: {np.mean(mean_delay[rtt_idx, :]):.2f} +- {np.std(mean_delay[rtt_idx, :]):.2f}")
+        print(f"Max delay: {np.mean(max_delay[rtt_idx, :]):.2f} +- {np.std(max_delay[rtt_idx, :]):.2f}")
 
-        run_1.counter += 1
+    # Plot erasure series:
+    n_plt = 1
+    plt.figure()
+    for r_plt in range(rep):
+        plt.plot(range(int(n_plt*(rtt/2+1)), timesteps), erasures_hist[r_plt, n_plt, int(n_plt*(rtt/2+1)):], label=f"rep {r_plt}")
+    plt.legend()
+    plt.grid()
+    plt.title(f"Erasure series for node {n_plt}")
+    plt.show()
 
-    # Print final mean:
-    rtt = cfg.param.rtt
-    er_rate = cfg.param.er_rate
-    print(f"\n")
-    print("----Final Results----")
-    print(f"RTT={rtt}")
-    print(f"Channel rates: {1 - np.array(er_rate)}")
-    print(f"Mean eta: {np.mean(eta):.2f} + {np.std(eta):.2f}")
-    print(f"Mean delay: {np.mean(mean_delay):.2f} + {np.std(mean_delay):.2f}")
-    print(f"Max delay: {np.mean(max_delay):.2f} + {np.std(max_delay):.2f}")
+    # Plot mean delay:
 
-    # # Plot erasure series:
-    # n_plt = 1
-    # plt.figure()
-    # for r_plt in range(rep):
-    #     plt.plot(range(int(n_plt*(rtt/2+1)), timesteps), erasures_hist[r_plt, n_plt, int(n_plt*(rtt/2+1)):], label=f"rep {r_plt}")
-    # plt.legend()
-    # plt.grid()
-    # plt.title(f"Erasure series for node {n_plt}")
-    # plt.show()
 
     a = 5
 
-
-if __name__ == '__main__':
-    run()
 
 # TODO: save config file
 
