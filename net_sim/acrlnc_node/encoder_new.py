@@ -68,7 +68,8 @@ class Encoder:
         self.csame = len([ct for ct in all_ct if ct[2] != 'NEW' and ct[3] is None])
         self.cnew = len([ct for ct in all_ct if ct[2] == 'NEW' and ct[3] is None])
 
-        self.delta = (self.md + self.eps * self.cnew) - (self.ad + (1 - self.eps) * self.csame) - self.p_th
+        eps_ = self.eps[0] if isinstance(self.eps, list) else self.eps
+        self.delta = (self.md + eps_ * self.cnew) - (self.ad + (1 - eps_) * self.csame) - self.p_th
         self.delta = np.round(self.delta, 4)  # Avoid numerical errors.
 
         if self.cfg.param.print_flag:
@@ -91,8 +92,9 @@ class Encoder:
 
         # 2.1 FEC rule:
         # end of "generation", start FEC transmission
+        eps_ = self.eps[0] if isinstance(self.eps, list) else self.eps
         if self.t % self.rtt == 0 and self.t > 0:
-            self.fec_num = self.cnew * self.eps #self.cnew * self.eps  # number of FEC packets
+            self.fec_num = self.cnew * eps_  #self.cnew * self.eps  # number of FEC packets
             if self.fec_num - 1 >= 0:  # Activate FEC transmission
                 self.fec_flag = True
             self.fec_flag = False  # Manually terminate FEC transmission
@@ -108,7 +110,7 @@ class Encoder:
             return
 
         # 2.2 FB-FEC rule:
-        # if in_fb[0] is not None:  # feedback received
+        # if in_cur_fb[0] is not None:  # feedback received
         self.update_delta()
         self.criterion = (self.delta > 0)  # True is FB-FEC
 
@@ -143,7 +145,7 @@ class Encoder:
                     return
         return
 
-    def run(self, pt_buffer: [], in_fb: [], eps: float, t=0, print_file=None):
+    def run(self, pt_buffer: [], in_fb: [], eps, t=0, print_file=None):
         '''
         :param pt_buffer: [is_arrived, [packet1, packet2, ...]]
         :param in_fb: [ack/nack, packet_id]
@@ -153,7 +155,7 @@ class Encoder:
         '''
 
         self.t = t
-        self.eps = eps
+        self.eps = eps.tolist() if isinstance(eps, np.ndarray) else eps
 
         is_arrived = pt_buffer[0]
         self.pt_buffer = pt_buffer[1]
@@ -236,7 +238,7 @@ class Encoder:
             print(f'Packet OUT: {self.type}[{self.w_min}, {self.w_max}]', file=f)
 
             print(
-                f'eps = {self.eps:.2f}',
+                f'eps = {self.eps}',
                 f'ad = {self.ad}',
                 f'md = {self.md}',
                 f'cnew = {self.cnew}',
@@ -255,4 +257,3 @@ class Encoder:
                 # f'transmission_line = {self.transmission_line.fifo_items()}')
 
         return
-
