@@ -5,7 +5,7 @@ or the number of packets). This implementation uses the simple tail-drop mechani
 import simpy
 from ns.port.fifo_store import FIFO_Store
 import random  # For debug only. Erase eventually
-from acrlnc_node.ac_node import ACRLNC_Node
+from acrlnc_node.ac_node1 import ACRLNC_Node
 from utils.config import CFG
 from utils.config_setup import Config
 import numpy as np
@@ -148,7 +148,8 @@ class NCEncoder:
 
                 # 3.1 Update next packet to be sent
                 self.out_ff.nc_header = out_ff[0]  # [[w_min, w_max], [pinfo_min, pinfo_max]]
-                self.out_ff.fec_type = out_ff[1]  # 'NEW' / 'FEC"
+                self.out_ff.fec_type = out_ff[1]  # 'NEW' / 'FEC'
+
                 # 3.2 Update next feedback packet to be sent
                 self.out_fb.fec_type = out_fb[0]  # ack_id
                 self.out_fb.nc_header = out_fb[1]  # ack / nack
@@ -170,7 +171,6 @@ class NCEncoder:
                     dec_times = np.array(self.ac_node.dec_times.fifo_items())
                     np.save(r"{}\dec_times.npy".format(res_folder), dec_times)
 
-
             ####################################################################################################
             # input_window = [pct.time for pct in ff_packets_hist]
             # if len(input_window) > 0:
@@ -181,7 +181,7 @@ class NCEncoder:
             # #
             # if self.fb_packets_received > 0:
             #     curr_ch_state = ff_ch[-1] if isinstance(ff_ch, list) else ff_ch
-            #     self.out_fb.nc_header = curr_ch_state
+            #     self.out_cur_fb.nc_header = curr_ch_state
 
             if ff_packets.nc_header is not None:
                 self.store_nc_enc.put(ff_packets)

@@ -1,3 +1,5 @@
+import numpy as np
+
 from acrlnc_node.encoder_new import Encoder
 from .esp_est import EpsEstimator
 from ns.port.fifo_store import FIFO_Store
@@ -11,6 +13,7 @@ class ACRLNC_Node():
     ### Each packet has an ACK flag: 0 = NACK, 1 = ACK, None = No ACK.
     ### Each packet has a FEC flag: NEW, FEC, FB-FEC, EOW
     # TODO: change receiver's feedback to be always 1.
+
     def __init__(self, env, cfg, t=-1):
         self.cfg = cfg
         self.env = env
@@ -23,11 +26,13 @@ class ACRLNC_Node():
                                     debug=False)  # Buffer of erasures, vector of size Memory.
         self.pt_buffer = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'),
                                     debug=False)  # Packet buffer, buffer of [p_t]
-
         self.in_pt = None  # Received ct from the sender, None = no ct, [p_start_ind, p_end_ind] = ct.
         self.out_ct = [None, None]  # [w_min, w_max] = ct to be sent to the receiver.
-        self.in_fb = [None, None, None]  # ack_id, ack, dec_id # Feedback from the receiver
-        self.out_fb = [None, None, None]  # ack_id, ack, dec_id  # Feedback to the sender
+
+        self.in_cur_fb = [None, None, None]  # Feedback from the next node [ack_id, ack, dec_id].
+
+        self.out_cur_fb = [None, None, None]  # Feedback to send out to the previous node [ack_id, ack, dec_id]
+        self.out_all_fb = []  # Feedback to send out to all following nodes [packets].
 
         self.last_nc_id = -1  # Last nc_id of the packet.
         self.last_packet_store = None  # Last packet stored in the buffer.
@@ -54,10 +59,10 @@ class ACRLNC_Node():
         '''
         :param in_packet_info: ct = packet.
         :param in_packet_recep_flag: 0 = NACK, 1 = ACK, None = No FB
-        :param fb_packet: fb = [ack, ack_id, dec_id], ack = 0 = NACK, 1 = ACK, None = No FB, ack_id = nc_id of the coming packet, dec_id = nc_id of the decoded packet.
+        :param fb_packet: fb = [[ack], [ack_id], dec_id], ack = 0 = NACK, 1 = ACK, None = No FB, ack_id = nc_id of the coming packet, dec_id = nc_id of the decoded packet.
 
         out_ct = [[w_min, w_max], fec_type] = ct to be sent to the receiver.
-        out_fb = [ack_id, ack, dec_id] = fb to be sent to the sender.
+        out_cur_fb = [[ack_id], [ack], dec_id] = fb to be sent to the sender.
         '''
 
         if self.t == 8 and self.node_type == 'Intermediate':
@@ -74,7 +79,10 @@ class ACRLNC_Node():
                       '\n---Inputs:---',
                       '\nin_packet_info: ', in_packet_info,
                       '\nin_packet_recep_flag: ', in_packet_recep_flag,
-                      '\nfb_packet: ', fb_packet)
+                      '\n'
+                      ': ', fb_packet)
+
+        self.get_fb(fb_packet)
 
         # Decide if to accept the coming packet and update the nc_id.
         self.update_pt_buffer_add(in_packet_info, in_packet_recep_flag)
@@ -95,7 +103,7 @@ class ACRLNC_Node():
         # TODO: Adina: Now - makes ct for receiver's node anyway because it creates the log file - Fix this.
         # Call the encoder to generate the output packet.
         if self.node_type != 'Receiver':
-            self.output_packet_processing(in_packet_recep_flag)
+            self.output_packet_processing(in_packet_recep_flag, fb_packet)
 
         # Print the outputs
         if self.cfg.param.print_flag:
@@ -104,13 +112,13 @@ class ACRLNC_Node():
                 print('---Outputs:---')
                 if self.node_type != 'Receiver':
                           print('out_ct: ', self.out_ct,)
-                print("out_fb: ",
-                f'ack_id:{self.out_fb[0]} || ack:{self.out_fb[1]} || dec_id:{self.out_fb[2] + 1 if self.out_fb[2] is not None else None}')
+                print("out_cur_fb: ",
+                f'ack_id:{self.out_cur_fb[0]} || ack:{self.out_cur_fb[1]} || dec_id:{self.out_cur_fb[2] + 1 if self.out_cur_fb[2] is not None else None}')
 
         if self.node_type == 'Receiver':
             brk = 1
 
-        return self.out_ct, self.out_fb
+        return self.out_ct, self.out_all_fb
 
     def update_t(self, t):
         self.t = t
@@ -138,7 +146,7 @@ class ACRLNC_Node():
         # dof_num = len(self.pt_buffer)
         dof_num = self.relevant_dof()
         packets_num = self.update_packet_num()
-        if dof_num < packets_num != 0:  #or self.last_packet_store.nc_header[0][1] < self.in_pt.nc_header[0][1]:  ######
+        if dof_num < packets_num != 0:
             return True
         else:
             if self.last_packet_store is None:
@@ -149,36 +157,43 @@ class ACRLNC_Node():
 
             return False
 
-    def update_pt_buffer_discard(self, fb_packet):
+    def get_fb(self, fb_packet):
 
         if fb_packet is not None:  # Some feedback is arrived.
 
-            ack_id = fb_packet.fec_type
-            ack = fb_packet.nc_header if self.node_type != 'Receiver' else 1
-            dec_id = fb_packet.nc_serial
-            if ack is not None:
-                self.in_fb = [ack_id, ack, dec_id]  # corresponding packet.
+            if fb_packet.fec_type is not None:
+                ack_id = fb_packet.fec_type[0]
+                ack = fb_packet.nc_header[0] if self.node_type != 'Receiver' else 1
+                dec_id = fb_packet.nc_serial
 
-                # The receiver feedback is not an indicator of decoding (its dec_id always increases). Update its buffer
-                # in the decoding process.
-                if self.node_type != 'Receiver':
-                    # Remove decoded packets from the buffer:
-                    if dec_id >= 0 and self.out_fb[2] >= -1:  # Indicator of decoding in the current node, meaning it is indeed OK to discard packets.
-                        while len(self.pt_buffer) > 0:  # Buffer is not empty.
-                            first_pt_id = self.pt_buffer.fifo_items()[0].nc_serial
-                            if first_pt_id <= dec_id:
+                self.in_cur_fb = [ack_id, ack, dec_id]  # corresponding packet.
+        return
 
-                                # Store the last packet stored in the buffer if it is removed.
-                                if len(self.pt_buffer) == 1:
-                                    self.last_packet_store = self.pt_buffer.fifo_items()[-1]
+    def update_pt_buffer_discard(self, fb_packet):
 
-                                # Remove the packet from the buffer.
-                                self.pt_buffer.get()
+        if self.in_cur_fb[1] is not None:  # Some feedback is arrived.
+            # The receiver feedback is not an indicator of decoding (its dec_id always increases). Update its buffer
+            # in the decoding process.
 
-                            else:
-                                break
+            if self.node_type != 'Receiver':
+                # Remove decoded packets from the buffer:
+                dec_id = self.in_cur_fb[2]
+                if dec_id >= 0 and self.out_cur_fb[2] >= -1:  # Indicator of decoding in the current node, meaning it is indeed OK to discard packets.
+                    while len(self.pt_buffer) > 0:  # Buffer is not empty.
+                        first_pt_id = self.pt_buffer.fifo_items()[0].nc_serial
+                        if first_pt_id <= dec_id:
 
-        self.update_packet_num()
+                            # Store the last packet stored in the buffer if it is removed.
+                            if len(self.pt_buffer) == 1:
+                                self.last_packet_store = self.pt_buffer.fifo_items()[-1]
+
+                            # Remove the packet from the buffer.
+                            self.pt_buffer.get()
+
+                        else:
+                            break
+
+        return
 
     def update_pt_buffer_add(self, in_packet_info, in_packet_recep_flag):
 
@@ -188,8 +203,15 @@ class ACRLNC_Node():
         # In packet info:
         self.in_pt = in_packet_info
 
-        if in_packet_recep_flag:
+        # Do not accept packets that contain nothing.
+        if isinstance(in_packet_info.nc_header, list):
+            if in_packet_info.nc_header[1][0] is None:
+                return
+        else:
+            if in_packet_info.nc_header is None:
+                return
 
+        if in_packet_recep_flag:
             # Accept the packet:
             if self.in_pt.fec_type == 'NEW' or (self.in_pt.fec_type != 'NEW' and self.accept_fec()):
                 # Update the nc_id:
@@ -203,7 +225,6 @@ class ACRLNC_Node():
                     self.rece_buffer.put(self.in_pt)
 
                 self.last_packet_store = self.pt_buffer.fifo_items()[-1]
-        self.update_packet_num()
 
         return
 
@@ -283,7 +304,7 @@ class ACRLNC_Node():
         if self.t == 7 and self.node_type == 'Transmitter':
             a=5
 
-        if fb_packet is not None:
+        if fb_packet is not None:  # Feedback packet is not empty.
 
             # Semi decode: use pt_buffer
             dof_num = self.relevant_dof()
@@ -302,8 +323,6 @@ class ACRLNC_Node():
                         if len(self.pt_buffer) == 1:
                             self.last_packet_store = self.pt_buffer.fifo_items()[0]
                         self.pt_buffer.get()
-                self.update_packet_num()
-
                 self.last_dec_id = dec_id
 
             # Real decode: use rece_buffer
@@ -321,46 +340,52 @@ class ACRLNC_Node():
                     self.last_dec_id_info = dec_id_info
 
         # dec with a minus one to match the later +1 in the nc_serial field.
-        self.out_fb = [ack_id, ack, dec_id - 1]
+        self.out_cur_fb = [ack_id, ack, dec_id - 1]
+
+        # 4. Feedback:
+        if self.in_cur_fb[1] is not None:  # If there is a feedback, add it to the feedback packet.
+            all_ack_id = [ack_id] + fb_packet.fec_type
+            all_ack = [ack] + fb_packet.nc_header
+            self.out_all_fb = [all_ack_id, all_ack,  dec_id-1]
+        else:  # First feedback to transmit.
+            self.out_all_fb = [[ack_id], [ack], dec_id-1]
+
         return
 
-    def epsilon_estimation(self):
+    def epsilon_estimation(self, fb_packet):
+
+        # Update the acks tracker.
+        if self.in_cur_fb[1] is not None:  # If there is a feedback.
+            all_acks = np.array(fb_packet.nc_header)
+            self.eps_est.update_acks_tracker(ack=all_acks)
 
         # Eps estimation.
-        # if self.in_fb[1] is not None:  # If there is a feedback.
-        #     self.eps_est.update_acks_tracker(self.in_fb[1])
-        #     curr_ch = 0 if self.node_type == 'Transmitter' else int(self.in_pt.src[-1])+1
-        #     eps = self.eps_est.eps_estimate(t=self.t, ch=curr_ch)
-        # else:
-        #     eps = 0  # No feedback - assume all packets arrived.
-
-        if self.in_fb[1] is not None: # If there is a feedback.
-            self.eps_est.update_acks_tracker(self.in_fb[1])
-        curr_ch = 0 if self.node_type == 'Transmitter' else int(self.in_pt.src[-1])+1
+        curr_ch = 0 if self.node_type == 'Transmitter' else int(self.in_pt.src[-1])+1  # relevant for Genie estimation
         eps = self.eps_est.eps_estimate(t=self.t, ch=curr_ch)
 
         return eps
 
-    def output_packet_processing(self, in_packet_recep_flag):
+    def output_packet_processing(self, in_packet_recep_flag, fb_packet):
 
         # Eps estimation.
-        eps = self.epsilon_estimation()
+        eps = self.epsilon_estimation(fb_packet)
 
         if self.cfg.param.print_flag:
             print('eps: ', eps)
 
         # Cut the buffer to discard packets that are not relevant for the next node.
-        if self.in_fb[2] is not None:
+        dec_id = self.in_cur_fb[2]
+        if dec_id is not None:  # If some decoding was done.
             pt_buffer_cut = FIFO_Store(self.env, capacity=float('inf'), memory_size=float('inf'), debug=False)
             for i in range(len(self.pt_buffer)):
-                if self.pt_buffer.fifo_items()[i].nc_serial > self.in_fb[2]:
+                if self.pt_buffer.fifo_items()[i].nc_serial > dec_id:
                     pt_buffer_cut.put(self.pt_buffer.fifo_items()[i])
         else:
             pt_buffer_cut = self.pt_buffer
 
         # Encoding:
         ct, fec_type = self.enc.run(pt_buffer=[in_packet_recep_flag, pt_buffer_cut],
-                                    in_fb=self.in_fb,
+                                    in_fb=self.in_cur_fb,
                                     eps=eps,
                                     t=self.t,
                                     print_file=self.print_file,
