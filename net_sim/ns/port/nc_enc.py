@@ -156,10 +156,6 @@ class NCEncoder:
                 self.out_fb.nc_serial = out_fb[2]  # dec
 
                 # 4. log
-                # log erasure series:
-                erasure_ = 1 if ff_recep_flag else 0
-                self.hist_erasures.append(erasure_)
-                np.save(r"{}\erasures_ch{}.npy".format(res_folder, self.element_id[-1]), np.array(self.hist_erasures))
 
                 # tran_times in the Transmitter
                 if self.element_id == 'enc_node0':  # the first node = Transmitter
@@ -170,6 +166,18 @@ class NCEncoder:
                 if fb_packets is not None and fb_packets.src == 'd_fb':  # the last node = Receiver
                     dec_times = np.array(self.ac_node.dec_times.fifo_items())
                     np.save(r"{}\dec_times.npy".format(res_folder), dec_times)
+
+                # save ct type history:
+                curr_ch = 0 if self.element_id == 'enc_node0' else int(
+                    ff_packets.src[-1]) + 1  # relevant for Genie estimation
+
+                ct_type = self.ac_node.ct_type_hist
+                np.save(r"{}\ct_type_ch={}.npy".format(res_folder, curr_ch), ct_type)
+
+                # log erasure series:
+                erasure_ = 1 if ff_recep_flag else 0  # 0=erasure, 1=reception
+                self.hist_erasures.append(erasure_)
+                np.save(r"{}\erasures_ch={}.npy".format(res_folder, curr_ch), np.array(self.hist_erasures))
 
             ####################################################################################################
             # input_window = [pct.time for pct in ff_packets_hist]

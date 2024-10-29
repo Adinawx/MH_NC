@@ -55,6 +55,8 @@ class ACRLNC_Node():
         # Time of decoding of each packet: packet i is decoded at time dec_times[i].
         self.dec_times = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
 
+        self.ct_type_hist = []
+
     def run(self, in_packet_info, in_packet_recep_flag, fb_packet):
         '''
         :param in_packet_info: ct = packet.
@@ -69,6 +71,7 @@ class ACRLNC_Node():
             a=5
 
         self.set_node_type(in_packet_info, fb_packet)
+        self.get_fb(fb_packet)
 
         # Print the inputs
         if self.cfg.param.print_flag:
@@ -79,10 +82,7 @@ class ACRLNC_Node():
                       '\n---Inputs:---',
                       '\nin_packet_info: ', in_packet_info,
                       '\nin_packet_recep_flag: ', in_packet_recep_flag,
-                      '\n'
-                      ': ', fb_packet)
-
-        self.get_fb(fb_packet)
+                      '\nfb_packet: ', fb_packet)
 
         # Decide if to accept the coming packet and update the nc_id.
         self.update_pt_buffer_add(in_packet_info, in_packet_recep_flag)
@@ -114,9 +114,6 @@ class ACRLNC_Node():
                           print('out_ct: ', self.out_ct,)
                 print("out_cur_fb: ",
                 f'ack_id:{self.out_cur_fb[0]} || ack:{self.out_cur_fb[1]} || dec_id:{self.out_cur_fb[2] + 1 if self.out_cur_fb[2] is not None else None}')
-
-        if self.node_type == 'Receiver':
-            brk = 1
 
         return self.out_ct, self.out_all_fb
 
@@ -290,12 +287,14 @@ class ACRLNC_Node():
     def decode_and_create_fb(self, in_packet_recep_flag, fb_packet):
 
         # 1. Packet info:
-        ack_id = self.in_pt.nc_serial
-
-        # 2. Ack:
-        ack = 1  # Arrived packet (ack=True)
-        if not in_packet_recep_flag:  # if NOT Arrived packet (ack=False)
-            ack = 0
+        ack_id = self.in_pt.packet_id
+        if ack_id is None:
+            ack = None
+        else:
+            # 2. Ack:
+            ack = 1  # Arrived packet (ack=True)
+            if not in_packet_recep_flag:  # if NOT Arrived packet (ack=False)
+                ack = 0
 
         # 3. Decoding:
         dec_id = -1  # No decoding (dec_id will be -1).
@@ -343,7 +342,7 @@ class ACRLNC_Node():
         self.out_cur_fb = [ack_id, ack, dec_id - 1]
 
         # 4. Feedback:
-        if self.in_cur_fb[1] is not None:  # If there is a feedback, add it to the feedback packet.
+        if self.in_cur_fb[1] is not None:  # If there is feedback, add it to the feedback packet.
             all_ack_id = [ack_id] + fb_packet.fec_type
             all_ack = [ack] + fb_packet.nc_header
             self.out_all_fb = [all_ack_id, all_ack,  dec_id-1]
@@ -361,9 +360,16 @@ class ACRLNC_Node():
 
         # Eps estimation.
         curr_ch = 0 if self.node_type == 'Transmitter' else int(self.in_pt.src[-1])+1  # relevant for Genie estimation
-        eps = self.eps_est.eps_estimate(t=self.t, ch=curr_ch)
 
-        return eps
+        est_type = self.cfg.param.er_estimate_type
+        if est_type == 'genie':  # TODO: Fix the genie estimation.
+            eps_mean = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='genie')
+            eps_max = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='genie')
+        else:
+            eps_mean = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='stat')
+            eps_max = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='stat_max')
+
+        return [eps_mean, eps_max]
 
     def output_packet_processing(self, in_packet_recep_flag, fb_packet):
 
@@ -371,9 +377,12 @@ class ACRLNC_Node():
         eps = self.epsilon_estimation(fb_packet)
 
         if self.cfg.param.print_flag:
-            print('eps: ', eps)
+            print('eps mean: ', eps[0])
+            print('eps max: ', eps[1])
 
         # Cut the buffer to discard packets that are not relevant for the next node.
+        # If some packets are acked as decoded - we do not need them in c_t
+        # We may still want them to be in the pt_buffer
         dec_id = self.in_cur_fb[2]
         if dec_id is not None:  # If some decoding was done.
             pt_buffer_cut = FIFO_Store(self.env, capacity=float('inf'), memory_size=float('inf'), debug=False)
@@ -382,6 +391,9 @@ class ACRLNC_Node():
                     pt_buffer_cut.put(self.pt_buffer.fifo_items()[i])
         else:
             pt_buffer_cut = self.pt_buffer
+
+        if len(pt_buffer_cut) != len(self.pt_buffer):
+            a=5
 
         # Encoding:
         ct, fec_type = self.enc.run(pt_buffer=[in_packet_recep_flag, pt_buffer_cut],
@@ -430,5 +442,7 @@ class ACRLNC_Node():
         # Update the send times for the delay calculation.
         if fec_type == 'NEW':  # or fec_type == 'FEC' and self.t == 0:
             self.send_times.put(self.t)
+
+        self.ct_type_hist.append(fec_type)
 
         return
