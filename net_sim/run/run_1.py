@@ -107,13 +107,28 @@ def run_1(cfg, rtt, er_rates, new_folder):
     dec_times = np.load(f"{new_folder}\\dec_times.npy")
     last_dec = dec_times.shape[0]
 
-    erasures_hist = np.zeros([channels_num, timesteps])
-    for n in range(channels_num):
-        in_delay = int(
-            n * (rtt / 2 + 1))  # Each node receives the first packet after n*(rtt/2+1) timesteps.
-        erasures_hist[n, in_delay:] = np.load(f"{new_folder}\\erasures_ch{n}.npy")
-    erasures_num = [int(np.sum(1 - erasures_hist[n, int(n * (rtt / 2 + 1)):])) for n in
-                    range(channels_num)]  # TODO: A bug in the erasures log.
+    if cfg.param.print_flag:
+        erasures_hist = np.zeros([channels_num, timesteps])
+
+        for n in range(channels_num):
+            # 1. Ct Type history:
+            ct_type_hist = np.load(f"{new_folder}\\ct_type_ch={n}.npy")
+
+            new_num = sum(ct_type_hist == 'NEW')
+            fbf_num = sum(ct_type_hist == 'FB-FEC')
+            fec_num = sum(ct_type_hist == 'FEC')
+            empty_num = sum(ct_type_hist == 'EMPTY_FEC')
+            bls_num = sum(ct_type_hist == 'NONE-BLS')
+            all_fec = fbf_num + fec_num + empty_num
+            print(f"Node {n}: NEW: {new_num}, All FEC:{all_fec}, No Tran: {bls_num}")
+            print(f"        FB_FEC: {fbf_num}, FEC: {fec_num}, EMPTY_FEC: {empty_num}\n")
+
+            # 2. Erasures history:
+            # Each node receives the first packet after n*(rtt/2+1) timesteps.
+            in_delay = int((n+1) * (rtt / 2 + 1)) # TODO: check if this is n or n+1, cause the first channel delay should be 0.
+            erasures_hist[n, in_delay:] = np.load(f"{new_folder}\\erasures_ch={n+1}.npy")
+            erasures_num = np.sum(1 - erasures_hist[n, in_delay:])
+            print(f"Channel {n}: erasures num: {erasures_num}\n")
 
     if last_dec == 0:
         print("No packets were decoded")
