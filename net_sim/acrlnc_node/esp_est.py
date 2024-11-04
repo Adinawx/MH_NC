@@ -18,13 +18,13 @@ class EpsEstimator:
         self.acks_tracker.put(ack)
         return
 
-    def eps_estimate(self, t, ch, est_type='stat'):
+    def eps_estimate(self, t, ch, est_type='stat', leng_=None):
 
         self.t = t
         self.ch = ch
 
         if est_type == 'genie':
-            return self.genie()
+            return self.genie(leng_)
         elif est_type == 'stat':
             return self.stat()
         elif est_type == 'stat_max':
@@ -46,7 +46,7 @@ class EpsEstimator:
             # Compute the mean across each position, ignoring NaNs
             eps = np.nanmean(padded, axis=0)
         else:
-            eps = np.zeros(1)
+            eps = [0.5]
 
         return eps
 
@@ -129,10 +129,10 @@ class EpsEstimator:
         # # Old - contains only the current forward node
         # # Only load the full series the first time the function is called
         # if self.genie_ is None:
-        #     eps = self.cfg.param.er_rates[self.ch]
+        #     eps_hist = self.cfg.param.er_rates[self.ch]
         #     path = self.cfg.param.er_series_path
         #     path = path.replace('AAA', f"ch_{self.ch}")
-        #     path = path.replace('BBB', f'{eps:.2f}')
+        #     path = path.replace('BBB', f'{eps_hist:.2f}')
         #     self.genie_ = np.genfromtxt(path, delimiter=',')  # full series
         #
         # # Calculate the subseries from t-RTT to t
@@ -148,7 +148,7 @@ class EpsEstimator:
         # Return the mean of the subseries
         return np.mean(subseries)
 
-    def genie(self):
+    def genie(self, leng_=None):
 
         # 0. Initialization - Load the full series if it has not been loaded yet
         channels_num = len(self.cfg.param.er_rates)
@@ -171,20 +171,33 @@ class EpsEstimator:
 
         # Iterate through each time step
         eps_mean = []
-        for ch in range(channels_num - self.ch):
-            in_delay = int((ch) * (self.cfg.param.rtt / 2 + 1))
+        for ch in range(self.ch, channels_num):
+            in_delay = int((ch) * (self.cfg.param.rtt / 2))
+            # in_delay = 0
+
             # If current time step is greater than or equal to the delay for this series
             if self.t >= in_delay:
+
+                if leng_ is None or leng_ == 0:
+                    leng_ = self.cfg.param.rtt+2
+
                 # Calculate the index for this series based on the delay
-                start = max(0, int(self.t-in_delay - self.cfg.param.rtt))
+                start = max(0, int(self.t-in_delay - leng_ + 1))
                 end = int(self.t-in_delay) + 1
-                if end < len(self.genie_helper[ch, :]):
-                    # TODO: This isn;t correct yet.
+
+                # cut the first element of the series due to the +1 inherent delay of the system.
+                if self.genie_helper.ndim > 1:
+                    series = self.genie_helper[ch, ch+1:].squeeze()
+                else:
+                    series = self.genie_helper[ch+1:]
+
+                if end < len(series):
                     eps_mean.append(
-                        np.mean(1-self.genie_helper[ch, start:end]))
+                        np.mean(1-series[start:end]))
                 else:
                     print("Error: Genie Index out of bounds")
-            else:
-                eps_mean.append(np.zeros(1))  # Series not yet available - return 0
+            # else:
+            #     # eps_mean.append(np.zeros(1))  # Series not yet available - return 0
+            #     eps_mean.append(0)
 
         return eps_mean

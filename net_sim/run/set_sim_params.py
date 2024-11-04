@@ -42,7 +42,7 @@ def noise_param(noise_type, *args):
     elif noise_type == 'from_csv':  # Example for args: args = 'C:\\Users\\tmp.mat'
         noise_dict = {
             'type': noise_type,
-            'eps': args[0],
+            'eps_hist': args[0],
             'path': args[1],
             'debug': False
         }

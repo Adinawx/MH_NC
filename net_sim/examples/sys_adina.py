@@ -68,7 +68,7 @@ def noise_param(noise_type, *args):
     elif noise_type == 'from_csv':  # Example for args: args = 'C:\\Users\\tmp.mat'
         noise_dict = {
             'type': noise_type,
-            'eps': args[0],
+            'eps_hist': args[0],
             'path': args[1],
             'debug': False
         }
@@ -235,7 +235,7 @@ def run():
         for r in range(rep):
             print(f"---Repetition {r + 1}---")
 
-            # When reading data from a file, determine here the relevant path, AAA=Channel number and BBB=eps.
+            # When reading data from a file, determine here the relevant path, AAA=Channel number and BBB=eps_hist.
             cfg.param.er_series_path = f"{cfg.param.project_folder}" \
                    f"\\Data\\{cfg.param.er_type}\\AAA\\" \
                    f"erasure_series_eps_BBB_series_{r}.csv"

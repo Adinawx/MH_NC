@@ -134,7 +134,7 @@ class Encoder:
         """
         Get the prediction of the erasure probability.
         :param pred: vector of predictions of the erasure probability
-        :return: eps: erasure rate in the last rtt time slots.
+        :return: eps_hist: erasure rate in the last rtt time slots.
         """
         self.pred = pred
         return self.pred
@@ -143,7 +143,7 @@ class Encoder:
         """
         Update the prediction of the erasure probability.
         :param pred: vector of predictions of the erasure probability
-        :return: eps: erasure rate in the last rtt time slots.
+        :return: eps_hist: erasure rate in the last rtt time slots.
         """
         self.eps = torch.mean(1 - self.pred[0, 1:self.rtt])
         return self.eps

@@ -84,10 +84,11 @@ def create_network_and_run(cfg, rtt, er_rates):
     for curr_node in nc_nodes:
         time_ind = 0
         for curr_time in range(len(curr_node.en_enc.store_ff_hist.fifo_items())):
+            curr_erasure = curr_node.en_enc.store_ff_ch_hist.fifo_items()[curr_time]
             curr_pct = curr_node.en_enc.store_ff_hist.fifo_items()[curr_time]
             arr_time = int(curr_node.en_enc.hist_store_ff_time[time_ind])
             time_ind += 1
-            str_log = f"id: {curr_pct.packet_id}, nc id: {curr_pct.nc_serial}, src: {curr_pct.src}, FEC type: {curr_pct.fec_type}, header: {curr_pct.nc_header}, type: {curr_pct.msg_type}"
+            str_log = f"{curr_erasure} || id: {curr_pct.packet_id}, nc id: {curr_pct.nc_serial}, src: {curr_pct.src}, FEC type: {curr_pct.fec_type}, header: {curr_pct.nc_header}, type: {curr_pct.msg_type}"
             log_df.at[arr_time, f'node{curr_node.ind}'.ljust(90)] = str_log.ljust(90)
 
     log_df.to_csv('ff_log', sep='\t')
@@ -101,57 +102,109 @@ def run_1(cfg, rtt, er_rates, new_folder):
     time1 = time.time()
     create_network_and_run(cfg, rtt, er_rates)
     time2 = time.time()
-    print(f"time: {time2 - time1}")
+    print(f"time: {time2 - time1}\n")
 
     send_times = np.load(f"{new_folder}\\tran_times.npy")
     dec_times = np.load(f"{new_folder}\\dec_times.npy")
     last_dec = dec_times.shape[0]
 
-    if cfg.param.print_flag:
-        erasures_hist = np.zeros([channels_num, timesteps])
+    erasures_hist = np.ones([channels_num, timesteps])
+    erasures_num = np.zeros(channels_num)
+    new_num = np.zeros(channels_num)
+    fbf_num = np.zeros(channels_num)
+    fec_num = np.zeros(channels_num)
+    eow_num = np.zeros(channels_num)
+    all_fec = np.zeros(channels_num)
+    empty_num = np.zeros(channels_num)
+    bls_num = np.zeros(channels_num)
+    bls_fec_num = np.zeros(channels_num)
+    all_empty = np.zeros(channels_num)
 
-        for n in range(channels_num):
-            # 1. Ct Type history:
-            ct_type_hist = np.load(f"{new_folder}\\ct_type_ch={n}.npy")
+    for n in range(channels_num):
+        # 1. Ct Type history:
+        ct_type_hist = np.load(f"{new_folder}\\ct_type_ch={n}.npy")
 
-            new_num = sum(ct_type_hist == 'NEW')
-            fbf_num = sum(ct_type_hist == 'FB-FEC')
-            fec_num = sum(ct_type_hist == 'FEC')
-            empty_num = sum(ct_type_hist == 'EMPTY_FEC')
-            bls_num = sum(ct_type_hist == 'NONE-BLS')
-            all_fec = fbf_num + fec_num + empty_num
-            print(f"Node {n}: NEW: {new_num}, All FEC:{all_fec}, No Tran: {bls_num}")
-            print(f"        FB_FEC: {fbf_num}, FEC: {fec_num}, EMPTY_FEC: {empty_num}\n")
+        new_num[n] = sum(ct_type_hist == 'NEW')
+        fbf_num[n] = sum(ct_type_hist == 'FB-FEC')
+        fec_num[n] = sum(ct_type_hist == 'FEC')
+        eow_num[n] = sum(ct_type_hist == 'EOW')
+        bls_fec_num[n] = sum(ct_type_hist == 'BLS-FEC')
+        all_fec[n] = fbf_num[n] + fec_num[n] + eow_num[n] + bls_fec_num[n]
+        empty_num[n] = sum(ct_type_hist == 'EMPTY_FEC')
+        bls_num[n] = sum(ct_type_hist == 'EMPTY-BLS')
+        all_empty[n] = empty_num[n] + bls_num[n]
 
-            # 2. Erasures history:
-            # Each node receives the first packet after n*(rtt/2+1) timesteps.
-            in_delay = int((n+1) * (rtt / 2 + 1)) # TODO: check if this is n or n+1, cause the first channel delay should be 0.
-            erasures_hist[n, in_delay:] = np.load(f"{new_folder}\\erasures_ch={n+1}.npy")
-            erasures_num = np.sum(1 - erasures_hist[n, in_delay:])
-            print(f"Channel {n}: erasures num: {erasures_num}\n")
+        if cfg.param.print_flag:
+            print(f"Node {n}: NEW: {new_num[n]}, All FEC:{all_fec[n]}, No Tran: {all_empty[n]}")
+            print(f"        FB_FEC: {fbf_num[n]}, FEC: {fec_num[n]}, EOW:{eow_num[n]}, FEC-SPACE: {bls_fec_num[n]}\n",
+                  f"        EMPTY-BUFFER: {empty_num[n]}, EMPTY-SPACE: {bls_num[n]}\n")
+
+        # 2. Erasures history: from receving in the next node, thus: n+1
+        temp = np.load(f"{new_folder}\\erasures_ch={n+1}.npy")
+        erasures_hist[n, :len(temp)] = temp
+
+        erasure_means = [
+            (1 - erasures_hist[n, :i + 1]).mean() for i in range((rtt-1))
+        ]
+        erasure_means += [
+            (1 - erasures_hist[n, i:i + rtt]).mean()
+            for i in range(len(temp) - (rtt-1))
+        ]
+
+        erasures_num[n] = np.sum(1 - erasures_hist[n, :len(temp)])
+        if cfg.param.print_flag:
+            print(f"Channel {n}: erasures num: {erasures_num[n]}\n")
+
+        # 3. Epsilon history: from estimating eps in the PREV node, thus: n
+        # eps_hist = np.load(f"{new_folder}\\eps_mean_ch={n}.npy")[:len(temp)]
+        # plot epsilon history:
+        # Each NODE receives the first packet after n*(rtt/2+1) timesteps.
+        # #in_delay = int((n+1) * (rtt / 2 + 1))  # n+1: starting from second node (ignoring the transmitter)
+        # t = np.arange(0, len(temp))
+        # plt.figure(figsize=(10, 5))
+        # plt.plot(t, eps_hist, label='Estimated Epsilon', marker='o', markersize=3)
+        # plt.plot(t, erasure_means, label='Erasure rate', marker='o', markersize=3)
+        # plt.xlabel('Timesteps')
+        # plt.ylabel('Epsilon')
+        # plt.title(f'Epsilon history for channel {n}')
+        # plt.grid()
+        # plt.legend()
+        # plt.show()
 
     if last_dec == 0:
         print("No packets were decoded")
-        mean_delay = np.nan
-        max_delay = np.nan
+        mean_delay_ones = np.nan
+        max_delay_ones = np.nan
         eta = np.nan
 
     else:
-        # delay_i = dec_times[:last_dec] - np.arange(last_dec) - channels_num
-        delay_i = dec_times[:last_dec] - send_times[:last_dec] - channels_num
+        delay_i_ones = dec_times[:last_dec] - np.arange(last_dec) - channels_num
+        delay_i_NC = dec_times[:last_dec] - send_times[:last_dec] - channels_num
 
         eta = last_dec / (
                 timesteps - (channels_num + 1) * rtt / 2)  # +1: due to the inherent 1 delay of each node.
-        mean_delay = np.mean(delay_i, axis=0)
-        max_delay = np.max(delay_i)
+        mean_delay_ones = np.mean(delay_i_ones, axis=0)
+        max_delay_ones = np.max(delay_i_ones)
+
+        mean_delay_NC = np.mean(delay_i_NC, axis=0)
+        max_delay_NC = np.max(delay_i_NC)
 
         print(f"last dec packet: {last_dec}")
-        # print(f"erasures num: {erasures_num}")
-        print(f"eta: {eta:.2f}")
-        print(f"mean delay: {mean_delay:.2f}")
-        print(f"max delay: {max_delay:.2f}")
+        all_erasures = np.sum(erasures_num)
+        print(f"all erasures num: {all_erasures}")
 
-    return eta, mean_delay, max_delay
+        all_empty_fec = np.sum(empty_num)
+        print(f"empty buffer num: {all_empty_fec}")
+        all_bls = np.sum(bls_num)
+        print(f"empty spaces num: {all_bls}")
+
+        print(f"eta: {eta:.2f}")
+        print(f"mean delay: {mean_delay_ones:.2f}")
+        print(f"max delay: {max_delay_ones:.2f}")
+        print(f"mean delay NC: {mean_delay_NC:.2f}")
+        print(f"max delay NC: {max_delay_NC:.2f}")
+
+    return eta, mean_delay_ones, max_delay_ones
 
 # TODO: save config file
 

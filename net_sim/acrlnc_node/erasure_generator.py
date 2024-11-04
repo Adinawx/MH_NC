@@ -27,7 +27,7 @@ def create_and_save_erasure_series_for_eps(r, length, eps_list, main_path):
     Parameters:
     r (int): Number of erasure series to generate per epsilon.
     length (int): Length of each erasure series.
-    eps_list (list of float): List of erasure probabilities (eps values).
+    eps_list (list of float): List of erasure probabilities (eps_hist values).
     main_path (str): Main directory path ('BEC'), containing subfolders where the series will be saved.
 
     Returns:
@@ -55,7 +55,7 @@ def create_and_save_erasure_series_for_eps(r, length, eps_list, main_path):
 
                 # Save the series to a CSV file
                 np.savetxt(filename, series, fmt='%d', delimiter=',')
-                print(f"Series {i + 1} for eps={eps} saved in {channel_path}")
+                print(f"Series {i + 1} for eps_hist={eps} saved in {channel_path}")
 
 
 def read_erasure_series_for_eps(eps, r, channel_num, main_path):
@@ -63,7 +63,7 @@ def read_erasure_series_for_eps(eps, r, channel_num, main_path):
     Reads R erasure series from a specific channel's subfolder for a given epsilon.
 
     Parameters:
-    eps (float): The erasure probability (epsilon) to load the series for.
+    eps_hist (float): The erasure probability (epsilon) to load the series for.
     r (int): The number of series to read.
     channel_num (int): The channel number (1-5) corresponding to the subfolder.
     main_path (str): Main directory path ('BEC'), containing subfolders where the series are stored.
@@ -82,7 +82,7 @@ def read_erasure_series_for_eps(eps, r, channel_num, main_path):
             # Load the series from the file
             series = np.loadtxt(filename, delimiter=',').astype(int)
             series_list.append(series)
-            print(f"Series {i} for eps={eps} loaded from {filename}")
+            print(f"Series {i} for eps_hist={eps} loaded from {filename}")
         else:
             print(f"File {filename} not found.")
 
@@ -95,7 +95,7 @@ def plot_erasure_series(series_list, eps):
 
     Parameters:
     series_list (list of np.ndarray): The erasure series to plot.
-    eps (float): The epsilon value for the series being plotted.
+    eps_hist (float): The epsilon value for the series being plotted.
 
     Returns:
     None
@@ -110,7 +110,7 @@ def plot_erasure_series(series_list, eps):
         plt.plot(series, label=f"Series {i}, Erasures: {num_erasures}")
 
     # Set plot title and labels
-    plt.title(f"Erasure Series for eps={eps}")
+    plt.title(f"Erasure Series for eps_hist={eps}")
     plt.xlabel("Timestep")
     plt.ylabel("Value (0=Erasure, 1=Success)")
 
@@ -131,7 +131,7 @@ main_path = "C:\\Users\\adina\\Technion\\Research\\MH_Project\\Code\\Data\\BEC" 
 # Create and save erasure series in different subfolders under the 'BEC' folder
 create_and_save_erasure_series_for_eps(r, length, eps_list, main_path)
 
-# Now, let's read r series for a specific epsilon (e.g., eps = 0.3) from channel 2
+# Now, let's read r series for a specific epsilon (e.g., eps_hist = 0.3) from channel 2
 eps = 0.3  # Epsilon value to load series for
 r_to_read = 3  # Number of series to read
 channel_num = 2  # Specify which channel's folder to read from (ch_2)
