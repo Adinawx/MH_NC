@@ -33,6 +33,7 @@ class ACRLNC_Node():
 
         self.out_cur_fb = [None, None, None]  # Feedback to send out to the previous node [ack_id, ack, dec_id]
         self.out_all_fb = []  # Feedback to send out to all following nodes [packets].
+        self.fb_dec_id = -1
 
         self.last_nc_id = -1  # Last nc_id of the packet.
         self.last_packet_store = None  # Last packet stored in the buffer.
@@ -40,7 +41,8 @@ class ACRLNC_Node():
 
         # Encoder:
         self.enc = Encoder(cfg=cfg, env=env)
-        self.eps_est = EpsEstimator(cfg=cfg, env=env)  # Estimator of eps.
+        self.eps_hist = []
+        # self.eps_est = EpsEstimator(cfg=cfg, env=env)  # Estimator of eps_hist.
 
         # Decoder:
         # self.packets_num = 0  # Number of info packets.
@@ -48,7 +50,8 @@ class ACRLNC_Node():
         self.last_dec_id = -1  # Last decoded packet.
 
         # Receiver:
-        self.rece_buffer = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)  # Buffer of received packets.
+        self.rece_buffer = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'),
+                                      debug=False)  # Buffer of received packets.
 
         # First time to send an info packet: packet i is sent at time send_times[i].
         self.send_times = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
@@ -68,15 +71,19 @@ class ACRLNC_Node():
         '''
 
         if self.t == 8 and self.node_type == 'Intermediate':
-            a=5
+            a = 5
 
         self.set_node_type(in_packet_info, fb_packet)
+        curr_ch = 0 if self.node_type == 'Transmitter' else int(
+            in_packet_info.src[-1]) + 1  # relevant for Genie estimation
+
         self.get_fb(fb_packet)
 
         # Print the inputs
         if self.cfg.param.print_flag:
             if self.node_type == 'Intermediate' or self.node_type == 'Receiver' or self.node_type == 'Transmitter':
-            # if self.node_type == 'Transmitter':
+                # if self.node_type == 'Transmitter':
+                # if curr_ch == 1 or curr_ch == 0:
                 print('\n----t: ', self.t, '----',
                       '\nSRC Node: ', in_packet_info.src,
                       '\n---Inputs:---',
@@ -89,10 +96,12 @@ class ACRLNC_Node():
 
         if self.cfg.param.print_flag:
             if self.node_type == 'Intermediate' or self.node_type == 'Receiver' or self.node_type == 'Transmitter':
-            # if self.node_type == 'Transmitter':
-                print('pt_buffer: dof_num:',  self.relevant_dof(), ', packets_num:', self.update_packet_num())
+                # if self.node_type == 'Transmitter':
+                # if curr_ch == 1 or curr_ch == 0:
+                print('pt_buffer: dof_num:', self.relevant_dof(), ', packets_num:', self.update_packet_num())
                 if self.node_type == 'Receiver':
-                    print('rece_buffer: dof_num:', len(self.rece_buffer), ', packets_info_num:', self.update_packet_info_num())
+                    print('rece_buffer: dof_num:', len(self.rece_buffer), ', packets_info_num:',
+                          self.update_packet_info_num())
 
         # Semi-decode the packets and create feedback packet.
         self.decode_and_create_fb(in_packet_recep_flag, fb_packet)
@@ -108,12 +117,13 @@ class ACRLNC_Node():
         # Print the outputs
         if self.cfg.param.print_flag:
             if self.node_type == 'Intermediate' or self.node_type == 'Receiver' or self.node_type == 'Transmitter':
-            # if self.node_type == 'Transmitter':
+                # if self.node_type == 'Transmitter':
+                # if curr_ch == 1 or curr_ch == 0:
                 print('---Outputs:---')
                 if self.node_type != 'Receiver':
-                          print('out_ct: ', self.out_ct,)
+                    print('out_ct: ', self.out_ct, )
                 print("out_cur_fb: ",
-                f'ack_id:{self.out_cur_fb[0]} || ack:{self.out_cur_fb[1]} || dec_id:{self.out_cur_fb[2] + 1 if self.out_cur_fb[2] is not None else None}')
+                      f'ack_id:{self.out_cur_fb[0]} || ack:{self.out_cur_fb[1]} || dec_id:{self.out_cur_fb[2] + 1 if self.out_cur_fb[2] is not None else None}')
 
         return self.out_ct, self.out_all_fb
 
@@ -138,7 +148,7 @@ class ACRLNC_Node():
 
         # for debug:
         if self.t == 9 and self.node_type == 'Receiver':
-            a=5
+            a = 5
 
         # dof_num = len(self.pt_buffer)
         dof_num = self.relevant_dof()
@@ -195,7 +205,7 @@ class ACRLNC_Node():
     def update_pt_buffer_add(self, in_packet_info, in_packet_recep_flag):
 
         if self.t == 22 and self.node_type == 'Intermediate':
-            a=5
+            a = 5
 
         # In packet info:
         self.in_pt = in_packet_info
@@ -228,7 +238,7 @@ class ACRLNC_Node():
     def update_packet_num(self):
 
         if self.t == 22 and self.node_type == 'Receiver':
-            a=5
+            a = 5
 
         if len(self.pt_buffer) > 0:  # Buffer is not empty.
             last_packet = self.pt_buffer.fifo_items()[-1]  # Last packet in the buffer.
@@ -301,7 +311,7 @@ class ACRLNC_Node():
 
         # for debug:
         if self.t == 7 and self.node_type == 'Transmitter':
-            a=5
+            a = 5
 
         if fb_packet is not None:  # Feedback packet is not empty.
 
@@ -345,63 +355,71 @@ class ACRLNC_Node():
         if self.in_cur_fb[1] is not None:  # If there is feedback, add it to the feedback packet.
             all_ack_id = [ack_id] + fb_packet.fec_type
             all_ack = [ack] + fb_packet.nc_header
-            self.out_all_fb = [all_ack_id, all_ack,  dec_id-1]
+            self.out_all_fb = [all_ack_id, all_ack, dec_id - 1]
         else:  # First feedback to transmit.
-            self.out_all_fb = [[ack_id], [ack], dec_id-1]
+            self.out_all_fb = [[ack_id], [ack], dec_id - 1]
 
         return
 
-    def epsilon_estimation(self, fb_packet):
-
-        # Update the acks tracker.
-        if self.in_cur_fb[1] is not None:  # If there is a feedback.
-            all_acks = np.array(fb_packet.nc_header)
-            self.eps_est.update_acks_tracker(ack=all_acks)
-
-        # Eps estimation.
-        curr_ch = 0 if self.node_type == 'Transmitter' else int(self.in_pt.src[-1])+1  # relevant for Genie estimation
-
-        est_type = self.cfg.param.er_estimate_type
-        if est_type == 'genie':  # TODO: Fix the genie estimation.
-            eps_mean = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='genie')
-            eps_max = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='genie')
-        else:
-            eps_mean = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='stat')
-            eps_max = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='stat_max')
-
-        return [eps_mean, eps_max]
+    # def epsilon_estimation(self, fb_packet):
+    #
+    #     # Update the acks tracker.
+    #     if self.in_cur_fb[1] is not None:  # If there is a feedback.
+    #         all_acks = np.array(fb_packet.nc_header)
+    #         self.eps_est.update_acks_tracker(ack=all_acks)
+    #
+    #     # Eps estimation.
+    #     curr_ch = 0 if self.node_type == 'Transmitter' else int(self.in_pt.src[-1])+1  # relevant for Genie estimation
+    #
+    #     est_type = self.cfg.param.er_estimate_type
+    #     if est_type == 'genie':  # TODO: Fix the genie estimation.
+    #         eps_mean = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='genie')
+    #         eps_max = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='genie')
+    #     else:
+    #         eps_mean = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='stat')
+    #         eps_max = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='stat_max')
+    #
+    #     self.eps_hist.append(eps_mean[0])
+    #
+    #     return [eps_mean, eps_max]
 
     def output_packet_processing(self, in_packet_recep_flag, fb_packet):
 
         # Eps estimation.
-        eps = self.epsilon_estimation(fb_packet)
+        # eps = self.epsilon_estimation(fb_packet)
 
-        if self.cfg.param.print_flag:
-            print('eps mean: ', eps[0])
-            print('eps max: ', eps[1])
+        # if self.cfg.param.print_flag:
+        #     print('eps_hist mean: ', eps[0])
+        #     print('eps_hist max: ', eps[1])
 
         # Cut the buffer to discard packets that are not relevant for the next node.
         # If some packets are acked as decoded - we do not need them in c_t
         # We may still want them to be in the pt_buffer
-        dec_id = self.in_cur_fb[2]
-        if dec_id is not None:  # If some decoding was done.
+        if self.in_cur_fb[2] is not None and self.in_cur_fb[2] >= 0:
+            self.fb_dec_id = self.in_cur_fb[2]
+        if self.fb_dec_id is not None:  # If some decoding was done.
             pt_buffer_cut = FIFO_Store(self.env, capacity=float('inf'), memory_size=float('inf'), debug=False)
             for i in range(len(self.pt_buffer)):
-                if self.pt_buffer.fifo_items()[i].nc_serial > dec_id:
+                if self.pt_buffer.fifo_items()[i].nc_serial > self.fb_dec_id:
                     pt_buffer_cut.put(self.pt_buffer.fifo_items()[i])
         else:
             pt_buffer_cut = self.pt_buffer
 
         if len(pt_buffer_cut) != len(self.pt_buffer):
-            a=5
+            a = 5
 
         # Encoding:
-        ct, fec_type = self.enc.run(pt_buffer=[in_packet_recep_flag, pt_buffer_cut],
-                                    in_fb=self.in_cur_fb,
-                                    eps=eps,
-                                    t=self.t,
-                                    print_file=self.print_file,
-                                    )
+        ct, fec_type, eps_mean = self.enc.run(pt_buffer=[in_packet_recep_flag, pt_buffer_cut],
+                                              in_fb=self.in_cur_fb,
+                                              fb_packet=fb_packet,
+                                              t=self.t,
+                                              print_file=self.print_file,
+                                              )
+
+        if isinstance(eps_mean, list):
+            self.eps_hist.append(eps_mean[0])
+        else:
+            self.eps_hist.append(eps_mean)
 
         # Info-packets header:
         [info_wmin, info_wmax] = [None, None]
@@ -434,7 +452,7 @@ class ACRLNC_Node():
                 info_wmax = self.info_packet_nc_header[1]
 
         if info_wmax is None and self.node_type != 'Receiver':
-            brk=5
+            brk = 5
 
         # Output packet info:
         self.out_ct = [[ct, [info_wmin, info_wmax]], fec_type]

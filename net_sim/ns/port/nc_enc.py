@@ -179,6 +179,10 @@ class NCEncoder:
                 self.hist_erasures.append(erasure_)
                 np.save(r"{}\erasures_ch={}.npy".format(res_folder, curr_ch), np.array(self.hist_erasures))
 
+                # log epsilons:
+                eps_mean_hist = self.ac_node.eps_hist
+                np.save(r"{}\eps_mean_ch={}.npy".format(res_folder, curr_ch), np.array(eps_mean_hist))
+
             ####################################################################################################
             # input_window = [pct.time for pct in ff_packets_hist]
             # if len(input_window) > 0:

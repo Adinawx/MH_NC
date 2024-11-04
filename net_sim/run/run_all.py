@@ -139,7 +139,7 @@ def run_all():
                 cfg.param.er_rates = er_rates
 
                 # When reading data from a file, determine the relevant path using {r}.
-                # Later: AAA=Channel index and BBB=eps.
+                # Later: AAA=Channel index and BBB=eps_hist.
                 cfg.param.er_series_path = f"{cfg.param.project_folder}" \
                                            f"\\Data\\{cfg.param.er_type}\\AAA\\" \
                                            f"erasure_series_eps_BBB_series_{r}.csv"
