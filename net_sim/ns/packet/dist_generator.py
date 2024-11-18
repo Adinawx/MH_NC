@@ -16,6 +16,7 @@ s_ff - generates the packets to be fed into the source node
 d_fb - generates the packets to be fed into the destination node (as dummy packets)
 """
 from net_sim.ns.packet.packet import Packet
+from net_sim.ns.port.fifo_store import FIFO_Store
 
 
 class DistPacketGenerator:
@@ -42,24 +43,26 @@ class DistPacketGenerator:
     """
 
     def __init__(
-        self,
-        env,
-        element_id,
-        arrival_dist,
-        size_dist,
-        initial_delay=0,
-        finish=None,
-        size=None,
-        flow_id=0,
-        rec_flow=False,
-        debug=False,
-        nc_header=None,  # MY CHANGES 27/5
-        nc_serial=None,  # MY CHANGES 30/5
-        msg_type=None,  # feefforward (ff) or feedback (fb) MY CHANGE 3/6
-        fec_type=None
+            self,
+            env,
+            element_id,
+            arrival_dist,
+            size_dist,
+            trig=False,
+            initial_delay=0,
+            finish=None,
+            size=None,
+            flow_id=0,
+            rec_flow=False,
+            debug=False,
+            nc_header=None,  # MY CHANGES 27/5
+            nc_serial=None,  # MY CHANGES 30/5
+            msg_type=None,  # feefforward (ff) or feedback (fb) MY CHANGE 3/6
+            fec_type=None
     ):
         self.element_id = element_id
         self.env = env
+        self.trigger_store = FIFO_Store(env, store_type='dropout', capacity=1, memory_size=1, debug=False)
         self.arrival_dist = arrival_dist
         self.size_dist = size_dist
         self.initial_delay = initial_delay
@@ -92,6 +95,12 @@ class DistPacketGenerator:
         yield self.env.timeout(self.initial_delay)
 
         while self.env.now < self.finish and self.sent_size < self.size:
+
+            # if False: # todo: 4/11 debug
+            if self.msg_type != 's_ff' and self.msg_type != 'd_fb':
+                yield self.trigger_store.get()  # Wait for the next arrival time
+
+            # yield self.env.timeout(1)
             self.nc_serial += 1
             packet = Packet(
                 self.env.now,
@@ -127,3 +136,11 @@ class DistPacketGenerator:
 
             # waits for the next transmission
             yield self.env.timeout(self.arrival_dist())
+
+    def set_trigger(self, trig_val):
+        """Trigger the packet generation."""
+        return self.trigger_store.put(trig_val)
+
+    def get_trigger(self):
+        """Trigger the packet generation."""
+        return self.trigger_store.get()

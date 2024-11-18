@@ -60,7 +60,7 @@ class ACRLNC_Node():
 
         self.ct_type_hist = []
 
-    def run(self, in_packet_info, in_packet_recep_flag, fb_packet):
+    def run(self, in_packet_info, in_packet_recep_flag, fb_packet, node_type):
         '''
         :param in_packet_info: ct = packet.
         :param in_packet_recep_flag: 0 = NACK, 1 = ACK, None = No FB
@@ -73,7 +73,8 @@ class ACRLNC_Node():
         if self.t == 8 and self.node_type == 'Intermediate':
             a = 5
 
-        self.set_node_type(in_packet_info, fb_packet)
+        # self.set_node_type(in_packet_info, fb_packet)
+        self.node_type = node_type  # Shai (9/11): set the node_type at runtime in run_1 and stop using the method set_node_type above
         curr_ch = 0 if self.node_type == 'Transmitter' else int(
             in_packet_info.src[-1]) + 1  # relevant for Genie estimation
 
@@ -131,7 +132,7 @@ class ACRLNC_Node():
         self.t = t
         return
 
-    def set_node_type(self, in_packet_info, fb_packet):
+    def set_node_type(self, in_packet_info, fb_packet): # Shai: Did not take update. todo: erase func
 
         if in_packet_info.src == 's_ff':
             self.node_type = 'Transmitter'

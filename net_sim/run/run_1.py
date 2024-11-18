@@ -71,6 +71,10 @@ def create_network_and_run(cfg, rtt, er_rates):
         fb_channels[i - 1].out = nc_nodes[i - 1].fb_in
     nc_nodes[0].fb_out.out = source_term.sink
 
+    nc_nodes[-1].update_type('Receiver')
+    nc_nodes[0].update_type('Transmitter')
+    list(map(lambda x: x.update_type('Intermediate'), nc_nodes[1:-1]))
+
     ### 3. Run:
     env.run(until=timesteps)
 

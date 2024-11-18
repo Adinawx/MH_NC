@@ -31,6 +31,7 @@ class NC_node:
         self.env = env
         self.cfg = cfg
         self.ind = ind
+        self.node_type = None
 
         # Init default values (for the class):
         self.ff_buffer_defaults = {'rate': 0.0, 'qlimit': None, 'element_id': 'buff_ff_node'+str(ind)}
@@ -77,6 +78,23 @@ class NC_node:
         self.fb_buffer.out = self.en_enc
         self.en_enc.out_fb = self.fb_pct
 
+    def update_type(self, node_type):
+        """
+        Update the type of the node. To be used during runtime
+        """
+        self.node_type = node_type
 
+        if hasattr(self.ff_buffer, 'node_type'):
+            self.ff_buffer.node_type = node_type
 
+        if hasattr(self.ff_pct, 'node_type'):
+            self.ff_pct_param.node_type = node_type
 
+        if hasattr(self.en_enc, 'node_type'):
+            self.en_enc.node_type = node_type
+
+        if hasattr(self.fb_buffer, 'node_type'):
+            self.fb_buffer.node_type = node_type
+
+        if hasattr(self.fb_pct, 'node_type'):
+            self.fb_pct.node_type = node_type

@@ -8,6 +8,8 @@ import random  # For debug only. Erase eventually
 from acrlnc_node.ac_node1 import ACRLNC_Node
 from utils.config import CFG
 from utils.config_setup import Config
+from ns.port.airinterface import AirInterface
+from ns.packet.sink import PacketSink
 import numpy as np
 
 class NCEncoder:
@@ -26,6 +28,7 @@ class NCEncoder:
             self,
             env,
             cfg,
+            node_type=None,
             element_id: int = None,
             debug: bool = False,
             enc_default_len: float = float('inf'),
@@ -33,6 +36,7 @@ class NCEncoder:
     ):
         self.env = env
         self.cfg = cfg
+        self.node_type = node_type
         self.out_ff = None
         self.out_fb = None
         self.element_id = element_id
@@ -144,16 +148,23 @@ class NCEncoder:
                 self.ac_node.update_t(self.env.now)
                 out_ff, out_fb = self.ac_node.run(in_packet_info=ff_packets,
                                                   in_packet_recep_flag=ff_recep_flag,
-                                                  fb_packet=fb_packets)
+                                                  fb_packet=fb_packets,
+                                                  node_type=self.node_type)
 
                 # 3.1 Update next packet to be sent
                 self.out_ff.nc_header = out_ff[0]  # [[w_min, w_max], [pinfo_min, pinfo_max]]
                 self.out_ff.fec_type = out_ff[1]  # 'NEW' / 'FEC'
 
+                # Trigger ff pct gen
+                self.out_ff.set_trigger(True)
+
                 # 3.2 Update next feedback packet to be sent
                 self.out_fb.fec_type = out_fb[0]  # ack_id
                 self.out_fb.nc_header = out_fb[1]  # ack / nack
                 self.out_fb.nc_serial = out_fb[2]  # dec
+
+                # Trigger ff pct gen
+                self.out_fb.set_trigger(True)
 
                 # 4. log
 

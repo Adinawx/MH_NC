@@ -4,6 +4,7 @@ or the number of packets). This implementation uses the simple tail-drop mechani
 """
 import simpy
 from net_sim.ns.port.fifo_store import FIFO_Store
+from net_sim.ns.packet.packet import Packet
 
 class BufferManeger:
     """Models an output port on a switch with a given rate and buffer size (in either bytes
@@ -37,6 +38,7 @@ class BufferManeger:
             self,
             env,
             rate: float,
+            node_type = None,
             qlimit: int = None,
             limit_bytes: bool = False,
             zero_downstream_buffer: bool = False,
@@ -45,6 +47,7 @@ class BufferManeger:
             memory_size: int = None,
             debug: bool = False,
     ):
+        self.node_type = node_type
         self.capacity = capacity
         self.memory_size = memory_size
         # Defne stores:
@@ -86,51 +89,75 @@ class BufferManeger:
 
     def run(self):
         """The generator function used in simulations."""
-        while True:
-            if self.zero_downstream_buffer:
-                packet = yield self.downstream_store.get()
-            else:
-                packet = yield self.store.get()
+        if self.node_type is 'Receiver' and self.element_id.startswith('buff_fb'):
+            pass
+        else:
+            while True:
+                if self.node_type is 'Receiver' and self.element_id.startswith('buff_fb') and False: # todo: detete this!
+                    dummy_packet = Packet(
+                        time=self.env.now,
+                        size=0,
+                        packet_id=0,
+                        src='d_fb',
+                        flow_id=200,
+                        nc_header=None,
+                        nc_serial=0,
+                        msg_type='d_fb',
+                        fec_type=None,
+                    )
+                    packet = dummy_packet
+                    ch_state = None
 
-            ch_state = yield self.store_channel_ff.get()
+                    self.store.put(packet)  # todo: Fix this - SO UGLY!!
+                    self.store_channel_ff.put(None)
 
-            self.memory_buffer = yield self.store_mem.put(packet)  # MY CHANGE 26/5
-            self.ch_memory_buffer = yield self.store_channel_mem.put(ch_state)  # MY CHANGE 26/5
+                    packet = yield self.store.get()
+                    ch_state = yield self.store_channel_ff.get()
+                else:
+                    if self.zero_downstream_buffer:
+                        packet = yield self.downstream_store.get()
+                    else:
+                        packet = yield self.store.get()
 
-            self.busy = 1
-            self.busy_packet_size = packet.size
+                    ch_state = yield self.store_channel_ff.get()
 
-            if self.rate > 0:
-                yield self.env.timeout(packet.size * 8.0 / self.rate)
-                self.byte_size -= packet.size
+                self.memory_buffer = yield self.store_mem.put(packet)  # MY CHANGE 26/5
+                self.ch_memory_buffer = yield self.store_channel_mem.put(ch_state)  # MY CHANGE 26/5
 
-            ### MY CHANGE 17/6 NC CODING Putting #####################
-            # Send to NC encoder
-            mem_items = self.store_mem.fifo_items()
-            ch_mem_items = self.store_channel_mem.items
-            if packet.msg_type == 'ff' or packet.msg_type == 's_ff':
-                # self.out.put_ff(mem_items, ch_mem_items)
+                self.busy = 1
+                self.busy_packet_size = packet.size
 
-                self.out.put_ff(packet, ch_state)
-            elif packet.msg_type == 'fb' or packet.msg_type == 'd_fb':
-                # self.out.put_fb(mem_items, ch_mem_items)
-                self.out.put_fb(packet, ch_state)
+                if self.rate > 0:
+                    yield self.env.timeout(packet.size * 8.0 / self.rate)
+                    self.byte_size -= packet.size
 
-            ### MY CHANGE 27/5 NC CODING PLACEHOLDER #####################
-            # TODO fix the buffer class and clean it up a bit. Need to have finite buffer size and finite memory for nc
-            # if self.out_ff.msg_type == 'ff':
-            #     # print(f'In Buffer: id: {self.element_id}, packet_id: {packet.packet_id}, channel buffer: {self.store_channel_ff.items}')  # DEBUG
-            #     mem_items = self.store_mem.items
-            #     nc_serials = [item.nc_serial for item in mem_items]
-            #     self.out_ff.nc_header = [nc_serials[0], nc_serials[-1]]  # MY CHANGE 27/5
-            # elif self.out_ff.msg_type == 'fb':
-            #     self.out_ff.nc_header = self.env.now  # MY CHANGE 27/5
-            # else:
-            #     print('Something went wrong! pct generator type isn''t legal')
-            ### END MY CHANGE 27/5 #################
+                ### MY CHANGE 17/6 NC CODING Putting #####################
+                # Send to NC encoder
+                mem_items = self.store_mem.fifo_items()
+                ch_mem_items = self.store_channel_mem.items
+                if packet.msg_type == 'ff' or packet.msg_type == 's_ff':
+                    # self.out.put_ff(mem_items, ch_mem_items)
 
-            self.busy = 0
-            self.busy_packet_size = 0
+                    self.out.put_ff(packet, ch_state)
+                elif packet.msg_type == 'fb' or packet.msg_type == 'd_fb':
+                    # self.out.put_fb(mem_items, ch_mem_items)
+                    self.out.put_fb(packet, ch_state)
+
+                ### MY CHANGE 27/5 NC CODING PLACEHOLDER #####################
+                # TODO fix the buffer class and clean it up a bit. Need to have finite buffer size and finite memory for nc
+                # if self.out_ff.msg_type == 'ff':
+                #     # print(f'In Buffer: id: {self.element_id}, packet_id: {packet.packet_id}, channel buffer: {self.store_channel_ff.items}')  # DEBUG
+                #     mem_items = self.store_mem.items
+                #     nc_serials = [item.nc_serial for item in mem_items]
+                #     self.out_ff.nc_header = [nc_serials[0], nc_serials[-1]]  # MY CHANGE 27/5
+                # elif self.out_ff.msg_type == 'fb':
+                #     self.out_ff.nc_header = self.env.now  # MY CHANGE 27/5
+                # else:
+                #     print('Something went wrong! pct generator type isn''t legal')
+                ### END MY CHANGE 27/5 #################
+
+                self.busy = 0
+                self.busy_packet_size = 0
 
     def put(self, packet):
         if True: # packet.msg_type == 'ff':
