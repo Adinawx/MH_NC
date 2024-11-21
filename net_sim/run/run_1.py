@@ -75,7 +75,7 @@ def create_network_and_run(cfg, rtt, er_rates):
     env.run(until=timesteps)
 
     ### 4. Log:
-    log_df = pd.DataFrame(columns=[f'node{i}'.ljust(90) for i in range(num_of_nodes)])
+    log_df = pd.DataFrame(columns=[f'node{i}'.ljust(100) for i in range(num_of_nodes)])
 
     # Add rows to the DataFrame for each timestep
     for timestep in range(timesteps):
@@ -89,7 +89,7 @@ def create_network_and_run(cfg, rtt, er_rates):
             arr_time = int(curr_node.en_enc.hist_store_ff_time[time_ind])
             time_ind += 1
             str_log = f"{curr_erasure} || id: {curr_pct.packet_id}, nc id: {curr_pct.nc_serial}, src: {curr_pct.src}, FEC type: {curr_pct.fec_type}, header: {curr_pct.nc_header}, type: {curr_pct.msg_type}"
-            log_df.at[arr_time, f'node{curr_node.ind}'.ljust(90)] = str_log.ljust(90)
+            log_df.at[arr_time, f'node{curr_node.ind}'.ljust(100)] = str_log.ljust(100)
 
     log_df.to_csv('ff_log', sep='\t')
 
@@ -104,6 +104,12 @@ def run_1(cfg, rtt, er_rates, new_folder):
     time2 = time.time()
     print(f"time: {time2 - time1}\n")
 
+    if cfg.param.debug:
+        max_delay_ones = np.nan
+        mean_delay_ones = np.nan
+        eta = np.nan
+        return max_delay_ones, mean_delay_ones, eta
+
     send_times = np.load(f"{new_folder}\\tran_times.npy")
     dec_times = np.load(f"{new_folder}\\dec_times.npy")
     last_dec = dec_times.shape[0]
@@ -115,29 +121,35 @@ def run_1(cfg, rtt, er_rates, new_folder):
     fec_num = np.zeros(channels_num)
     eow_num = np.zeros(channels_num)
     all_fec = np.zeros(channels_num)
-    empty_num = np.zeros(channels_num)
-    bls_num = np.zeros(channels_num)
-    bls_fec_num = np.zeros(channels_num)
+    empty_buffer_num = np.zeros(channels_num)
+    empty_bls_num = np.zeros(channels_num)
+    # bls_fec_num = np.zeros(channels_num)
     all_empty = np.zeros(channels_num)
 
     for n in range(channels_num):
         # 1. Ct Type history:
         ct_type_hist = np.load(f"{new_folder}\\ct_type_ch={n}.npy")
 
+        # out_times = int((n+1) * (rtt / 2 + 1))
+        # # The type is saved by transmmission, but we do not care fot trans' that exceed the simulation time limit.
+        # if out_times > 0:
+        out_times = int(rtt / 2 + 1)
+        ct_type_hist = ct_type_hist[:-out_times]
+
         new_num[n] = sum(ct_type_hist == 'NEW')
         fbf_num[n] = sum(ct_type_hist == 'FB-FEC')
         fec_num[n] = sum(ct_type_hist == 'FEC')
         eow_num[n] = sum(ct_type_hist == 'EOW')
-        bls_fec_num[n] = sum(ct_type_hist == 'BLS-FEC')
-        all_fec[n] = fbf_num[n] + fec_num[n] + eow_num[n] + bls_fec_num[n]
-        empty_num[n] = sum(ct_type_hist == 'EMPTY_FEC')
-        bls_num[n] = sum(ct_type_hist == 'EMPTY-BLS')
-        all_empty[n] = empty_num[n] + bls_num[n]
+        # bls_fec_num[n] = sum(ct_type_hist == 'BLS-FEC')
+        all_fec[n] = fbf_num[n] + fec_num[n] + eow_num[n] #+ bls_fec_num[n]
+        empty_buffer_num[n] = sum(ct_type_hist == 'EMPTY_BUFFER')
+        empty_bls_num[n] = sum(ct_type_hist == 'EMPTY-BLS')
+        all_empty[n] = empty_buffer_num[n] + empty_bls_num[n]
 
         if cfg.param.print_flag:
             print(f"Node {n}: NEW: {new_num[n]}, All FEC:{all_fec[n]}, No Tran: {all_empty[n]}")
-            print(f"        FB_FEC: {fbf_num[n]}, FEC: {fec_num[n]}, EOW:{eow_num[n]}, FEC-SPACE: {bls_fec_num[n]}\n",
-                  f"        EMPTY-BUFFER: {empty_num[n]}, EMPTY-SPACE: {bls_num[n]}\n")
+            print(f"        FB_FEC: {fbf_num[n]}, FEC: {fec_num[n]}, EOW:{eow_num[n]}\n",
+                  f"        EMPTY-BUFFER: {empty_buffer_num[n]}, EMPTY-SPACE: {empty_bls_num[n]}\n")
 
         # 2. Erasures history: from receving in the next node, thus: n+1
         temp = np.load(f"{new_folder}\\erasures_ch={n+1}.npy")
@@ -178,6 +190,16 @@ def run_1(cfg, rtt, er_rates, new_folder):
         eta = np.nan
 
     else:
+        all_empty_buffer = np.sum(empty_buffer_num)
+        print(f"empty buffer num: {all_empty_buffer}")
+        all_empty_bls = np.sum(empty_bls_num)
+        print(f"empty spaces num: {all_empty_bls}")
+        all_tran = cfg.param.timesteps * channels_num - (rtt/2*1) * (channels_num * (channels_num-1)/2)
+        # empty space rate:
+        print(f"empty space rate: {(all_empty_bls) / all_tran:.2f}")
+        print(f"empty buffer rate: {(all_empty_buffer) / all_tran:.2f}")
+        print(f"empty comp: {(all_empty_bls / all_empty_buffer):.2f}")
+
         delay_i_ones = dec_times[:last_dec] - np.arange(last_dec) - channels_num
         delay_i_NC = dec_times[:last_dec] - send_times[:last_dec] - channels_num
 
@@ -192,11 +214,6 @@ def run_1(cfg, rtt, er_rates, new_folder):
         print(f"last dec packet: {last_dec}")
         all_erasures = np.sum(erasures_num)
         print(f"all erasures num: {all_erasures}")
-
-        all_empty_fec = np.sum(empty_num)
-        print(f"empty buffer num: {all_empty_fec}")
-        all_bls = np.sum(bls_num)
-        print(f"empty spaces num: {all_bls}")
 
         print(f"eta: {eta:.2f}")
         print(f"mean delay: {mean_delay_ones:.2f}")

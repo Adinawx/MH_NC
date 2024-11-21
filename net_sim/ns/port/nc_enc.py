@@ -115,17 +115,17 @@ class NCEncoder:
                 fb_packets_hist = self.store_fb_hist.fifo_items()
                 fb_ch_hist = self.store_fb_ch_hist.fifo_items()
 
-            # if self.debug:
-            #     print(str(self.env.now) + '| ' + str(self.element_id))
-            #     print('-----------------------    Packet (in)   ------------------------------------')
-            #     for curr_ff_packet, curr_ff_ch in zip(ff_packets_hist, ff_ch_hist):
-            #         print(f"{curr_ff_packet} || {curr_ff_ch}")
-            #     print('-----------------------    FB (in)     ------------------------------------')
-            #     if self.fb_packets_received > 0:
-            #         for curr_fb_packet, curr_fb_ch in zip(fb_packets_hist, fb_ch_hist):
-            #             print(f"{curr_fb_packet} || {curr_fb_ch}")
-            #     # print('-----------------------    END (in)     ------------------------------------')
-            #     # print('\n')
+            if self.debug:
+                print(str(self.env.now) + '| ' + str(self.element_id))
+                print('-----------------------    Packet (in)   ------------------------------------')
+                for curr_ff_packet, curr_ff_ch in zip(ff_packets_hist, ff_ch_hist):
+                    print(f"{curr_ff_packet} || {curr_ff_ch}")
+                print('-----------------------    FB (in)     ------------------------------------')
+                if self.fb_packets_received > 0:
+                    for curr_fb_packet, curr_fb_ch in zip(fb_packets_hist, fb_ch_hist):
+                        print(f"{curr_fb_packet} || {curr_fb_ch}")
+                # print('-----------------------    END (in)     ------------------------------------')
+                # print('\n')
 
             ######ADINA########################################################################################
             if ff_packets.nc_header is not None:
@@ -184,55 +184,40 @@ class NCEncoder:
                 np.save(r"{}\eps_mean_ch={}.npy".format(res_folder, curr_ch), np.array(eps_mean_hist))
 
             ####################################################################################################
-            # input_window = [pct.time for pct in ff_packets_hist]
-            # if len(input_window) > 0:
-
-            #     self.out_ff.nc_header = [input_window[0], input_window[-1]]
-            # else:
-            #     self.out_ff.nc_header = None
-            # #
-            # if self.fb_packets_received > 0:
-            #     curr_ch_state = ff_ch[-1] if isinstance(ff_ch, list) else ff_ch
-            #     self.out_cur_fb.nc_header = curr_ch_state
-
-            if ff_packets.nc_header is not None:
-                self.store_nc_enc.put(ff_packets)
-                self.store_channel_stats.put(ff_ch)
 
             # End of enc code. Notice that I used a placeholder in order to remind ourselves that perhaps we want
             # to save the data actually used in the current step of the algorithm in separate buffers
 
-#             self.out_ff.fec_type = random.choice(['FEC', 'RLNC'])
+            if self.debug:
+                input_window = [pct.time for pct in ff_packets_hist]
+                if len(input_window) > 0:
 
+                    self.out_ff.nc_header = [input_window[0], input_window[-1]]
+                else:
+                    self.out_ff.nc_header = None
+                #
+                if self.fb_packets_received > 0:
+                    curr_ch_state = ff_ch[-1] if isinstance(ff_ch, list) else ff_ch
+                    # self.out_cur_fb.nc_header = curr_ch_state
 
-#             if self.debug:
-#                 nc_enc_items = self.store_nc_enc.fifo_items()
-#                 channel_stats_items = self.store_channel_stats.fifo_items()
+                if ff_packets.nc_header is not None:
+                    self.store_nc_enc.put(ff_packets)
+                    self.store_channel_stats.put(ff_ch)
 
-#                 print('-----------------------    FF (nc)   ------------------------------------')
-#                 if len(nc_enc_items) > 0:
-#                     print(f"[{nc_enc_items[0].nc_serial} -> {nc_enc_items[-1].nc_serial}]")
-#                 print('-----------------------    FB (nc)     ------------------------------------')
-#                 if self.fb_packets_received > 0:
-#                     for curr_fb_ch in channel_stats_items:
-#                         print(f"{curr_fb_ch}")
-#                 print('-----------------------    END (nc)     ------------------------------------')
+                self.out_ff.fec_type = random.choice(['FEC', 'NEW'])
 
-            # self.out_ff.fec_type = random.choice(['FEC', 'NEW'])
+                nc_enc_items = self.store_nc_enc.fifo_items()
+                channel_stats_items = self.store_channel_stats.fifo_items()
 
-            # if self.debug:
-            #     nc_enc_items = self.store_nc_enc.fifo_items()
-            #     channel_stats_items = self.store_channel_stats.fifo_items()
-            #
-            #     print('-----------------------    Packet (out)   ------------------------------------')
-            #     if len(nc_enc_items) > 0:
-            #         print(f"[{nc_enc_items[0].nc_serial} -> {nc_enc_items[-1].nc_serial}]")
-            #     print('-----------------------    FB (out)     ------------------------------------')
-            #     if self.fb_packets_received > 0:
-            #         for curr_fb_ch in channel_stats_items:
-            #             print(f"{curr_fb_ch}")
-            #     # print('-----------------------    END (out)     ------------------------------------')
-            #     print('\n')
+                print('-----------------------    Packet (out)   ------------------------------------')
+                if len(nc_enc_items) > 0:
+                    print(f"[{nc_enc_items[0].nc_serial} -> {nc_enc_items[-1].nc_serial}]")
+                print('-----------------------    FB (out)     ------------------------------------')
+                if self.fb_packets_received > 0:
+                    for curr_fb_ch in channel_stats_items:
+                        print(f"{curr_fb_ch}")
+                # print('-----------------------    END (out)     ------------------------------------')
+                print('\n')
 
     def put_ff(self, packet, ch_state):
         """Sends a packet to this element."""

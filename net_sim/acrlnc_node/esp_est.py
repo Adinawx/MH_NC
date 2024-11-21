@@ -18,13 +18,13 @@ class EpsEstimator:
         self.acks_tracker.put(ack)
         return
 
-    def eps_estimate(self, t, ch, est_type='stat', leng_=None):
+    def eps_estimate(self, t, ch, est_type='stat', *args):
 
         self.t = t
         self.ch = ch
 
         if est_type == 'genie':
-            return self.genie(leng_)
+            return self.genie(*args)
         elif est_type == 'stat':
             return self.stat()
         elif est_type == 'stat_max':
@@ -148,7 +148,7 @@ class EpsEstimator:
         # Return the mean of the subseries
         return np.mean(subseries)
 
-    def genie(self, leng_=None):
+    def genie(self, win_length=None, empty_indexes=None):
 
         # 0. Initialization - Load the full series if it has not been loaded yet
         channels_num = len(self.cfg.param.er_rates)
@@ -172,32 +172,31 @@ class EpsEstimator:
         # Iterate through each time step
         eps_mean = []
         for ch in range(self.ch, channels_num):
-            in_delay = int((ch) * (self.cfg.param.rtt / 2))
-            # in_delay = 0
+            in_delay = int((ch + 1) * (self.cfg.param.rtt / 2)) -1 - ch*2
 
             # If current time step is greater than or equal to the delay for this series
-            if self.t >= in_delay:
+            if self.t >= 0: #in_delay:
 
-                if leng_ is None or leng_ == 0:
-                    leng_ = self.cfg.param.rtt+2
+                if win_length is None or win_length == 0:
+                    win_length = self.cfg.param.rtt + 2
 
-                # Calculate the index for this series based on the delay
-                start = max(0, int(self.t-in_delay - leng_ + 1))
-                end = int(self.t-in_delay) + 1
+                start = max(0, int(self.t - win_length))
+                end = int(self.t) #+ 1
 
                 # cut the first element of the series due to the +1 inherent delay of the system.
                 if self.genie_helper.ndim > 1:
-                    series = self.genie_helper[ch, ch+1:].squeeze()
+                    series = self.genie_helper[ch, in_delay:].squeeze()
                 else:
-                    series = self.genie_helper[ch+1:]
+                    series = self.genie_helper[in_delay:]
+
+                mask = np.ones(len(series), dtype=bool)  # Create a mask of True
+                if len(empty_indexes) > 0:
+                    mask[np.array(empty_indexes)] = False  # Mark indices in empty_index as False
 
                 if end < len(series):
                     eps_mean.append(
-                        np.mean(1-series[start:end]))
+                        np.mean(1-series[start:end][mask[start:end]]))
                 else:
                     print("Error: Genie Index out of bounds")
-            # else:
-            #     # eps_mean.append(np.zeros(1))  # Series not yet available - return 0
-            #     eps_mean.append(0)
 
         return eps_mean

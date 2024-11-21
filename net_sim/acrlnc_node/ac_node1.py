@@ -70,7 +70,7 @@ class ACRLNC_Node():
         out_cur_fb = [[ack_id], [ack], dec_id] = fb to be sent to the sender.
         '''
 
-        if self.t == 8 and self.node_type == 'Intermediate':
+        if self.t == 22 and self.node_type == 'Intermediate':
             a = 5
 
         self.set_node_type(in_packet_info, fb_packet)
