@@ -95,3 +95,4 @@ class Packet:
     def __repr__(self):
         # return f"id: {self.packet_id}, nc id: {self.nc_serial}, src: {self.src}, FEC type: {self.fec_type}, size: {self.size}, header: {self.nc_header}, type: {self.msg_type}"  # MY CHANGE 27/5
         return f"(Gen time: {self.time}), id: {self.packet_id}, nc id: {self.nc_serial}, src: {self.src}, FEC type: {self.fec_type}, header: {self.nc_header}, type: {self.msg_type}"  # , size: {self.size} # New - 18/8
+

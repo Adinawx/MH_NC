@@ -10,7 +10,6 @@ from utils.config import CFG
 from utils.config_setup import Config
 import numpy as np
 
-
 class NCEncoder:
     """Models an output port on a switch with a given rate and buffer size (in either bytes
     or the number of packets), using the simple tail-drop mechanism to drop packets.

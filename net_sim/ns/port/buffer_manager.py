@@ -3,7 +3,7 @@ Implements a port with an output buffer, given an output rate and a buffer size 
 or the number of packets). This implementation uses the simple tail-drop mechanism to drop packets.
 """
 import simpy
-from ns.port.fifo_store import FIFO_Store
+from net_sim.ns.port.fifo_store import FIFO_Store
 
 class BufferManeger:
     """Models an output port on a switch with a given rate and buffer size (in either bytes
