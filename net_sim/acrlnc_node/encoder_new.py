@@ -49,6 +49,9 @@ class Encoder:
         self.eps_hist = []
         self.eps_mean = []
         self.eps_max = []
+        self.empty_indx = []  # for the genie estimation - remember when transmitted empty and ignore it in the eps mean.
+
+        self.curr_ch = 0  # channel index
 
     def update_t(self):
         self.t += 1
@@ -65,10 +68,11 @@ class Encoder:
         # if packets were decoded, update the c_t buffer.
         ct_temp = self.ct_buffer.fifo_items().copy()
         for ct in ct_temp:
-            if ct[1][1] < self.w_min:
-                self.ct_buffer.get()
-            else:
-                break
+            if ct[1][1] is not None: ## TRY 2
+                if ct[1][1] < self.w_min:
+                    self.ct_buffer.get()
+                else:
+                    break
         return
 
     def update_delta(self):
@@ -115,68 +119,116 @@ class Encoder:
         if self.cfg.param.er_estimate_type == 'stat_max':
             eps_ = self.eps_max[0]
 
-        # if self.t % self.rtt == 0 and self.t > 0:
-        if self.fec_flag == 'Start FEC Transmit':
-            self.fec_num = (self.cnew * eps_)  # self.rtt * eps_  #self.cnew * self.eps_hist  # number of FEC packets
-            if self.fec_num - 1 >= 0:  # Activate FEC transmission
-                self.fec_flag = 'FEC Transmit'
-                # self.fec_flag = True
-            # self.fec_flag = False  # Manually terminate FEC transmission
-                self.fec_flag = 'End FEC Transmit'  # Manually terminate FEC transmission
-            else:
-                self.fec_flag = 'End FEC Transmit'
+        self.update_delta()  # anyway update so c_new will be accurate for a-priori FEC
 
+        ######## Option 1: FEC by Time. Dis-Activate in main the other option ########
+        if self.t % self.rtt == 0 and self.t > 0:
+            self.fec_num = (self.cnew * eps_)  # self.rtt * eps_  #self.cnew * self.eps_hist  # number of FEC packets
+            print(f"---fec_num={self.fec_num}, eps={eps_}, cnew={self.cnew}---")
+            if self.fec_num - 1 >= 0:  # Activate FEC transmission
+                self.fec_flag = True
+            # self.fec_flag = False  # Manually terminate FEC transmission
+            else:
+                self.fec_flag = False
         # Check FEC transmission:
-        # if self.fec_flag and self.fec_num - 1 >= 0:  # FEC transmission
-        if self.fec_flag == 'FEC Transmit' and self.fec_num - 1 >= 0:  # FEC transmission
+        if self.fec_flag and self.fec_num - 1 >= 0:  # FEC transmission
             self.criterion = True
             self.type = 'FEC'
             # Reduce the number of FEC packets for the next time step:
             self.fec_num = self.fec_num - 1
 
             # End FEC transmission
-            # if self.fec_num - 1 < 0:
-            #     self.fec_flag = 'End FEC Transmit'
-            #     # self.fec_flag = False
-            #
-            #     # # BLS-FEC transmission:
-            #     if len(self.eps_mean) > 1:
-            #         self.bls_flag = True
-            #         self.bls_max = self.t
-            #         # BLS distributed:
-            #         n = np.round(np.sum(self.rtt * self.eps_mean[1:]))
-            #         self.bls_num = np.round(
-            #             np.linspace(self.rtt/(1+n), self.rtt-self.rtt/(1+n), int(n))
-            #         )
-                    # BLS all in one stream
-                    # self.bls_num = np.round(np.sum((self.rtt) * self.eps_mean[1:]))
+            if self.fec_num - 1 < 0:
+                self.fec_flag = False
 
+                # # BLS-FEC transmission:
+                if self.cfg.param.empty_space_flag:
+                    if len(self.eps_mean) > 1:
+                        self.bls_flag = True
+                        self.bls_max = self.t
+                        # BLS distributed:
+                        # n = np.round(np.sum(self.rtt * self.eps_mean[1:]))
+                        # self.bls_num = np.round(
+                        #     np.linspace(self.rtt/(1+n), self.rtt-self.rtt/(1+n), int(n))
+                        # )
+                        # BLS all in one stream
+                        self.bls_num = np.round(np.sum((self.rtt) * self.eps_mean[1:]))
             return
+        ##########################################################
 
-        # # 2.2 Blank Spaces - Reduce Max Delay?
-        # if self.bls_flag:  # for stream
+        ######## Option 2: FEC by packets. Activate in main as well ########
+        # if self.fec_flag == 'Start FEC Transmit':
+        #     self.fec_num = (self.cnew * eps_)  # self.rtt * eps_  #self.cnew * self.eps_hist  # number of FEC packets
+        #     if self.fec_num - 1 >= 0:  # Activate FEC transmission
+        #         self.fec_flag = 'FEC Transmit'
+        #     #     self.fec_flag = 'End FEC Transmit'  # Manually terminate FEC transmission
+        #     else:
+        #         self.fec_flag = 'End FEC Transmit'
+        #
+        # # Check FEC transmission:
+        # if self.fec_flag == 'FEC Transmit' and self.fec_num - 1 >= 0:  # FEC transmission
+        #     self.criterion = True
+        #     self.type = 'FEC'
+        #     # Reduce the number of FEC packets for the next time step:
+        #     self.fec_num = self.fec_num - 1
+        #
+        #     # End FEC transmission
+        #     if self.fec_num - 1 < 0:
+        #         self.fec_flag = 'End FEC Transmit'
+        #
+        #         # # BLS-FEC transmission:
+        #         if self.cfg.param.empty_space_flag:
+        #             if len(self.eps_mean) > 1:
+        #                 self.bls_flag = True
+        #                 self.bls_max = self.t
+        #                 # BLS distributed:
+        #                 # n = np.round(np.sum(self.rtt * self.eps_mean[1:]))
+        #                 # self.bls_num = np.round(
+        #                 #     np.linspace(self.rtt/(1+n), self.rtt-self.rtt/(1+n), int(n))
+        #                 # )
+        #                 # BLS all in one stream
+        #                 self.bls_num = np.round(np.sum((self.rtt) * self.eps_mean[1:]))
+        #     return
+        ##########################################################
+
+        # 2.2 Blank Spaces - Reduce Max Delay?
+        if self.bls_flag:  # for stream
         # if self.bls_flag and len(self.bls_num) > 0:  # for distributed BLS
-        #
-        #     # # # BLS distributed:
-        #     if (self.t - self.bls_max) in self.bls_num:
-        #         self.criterion = True
-        #         self.type = 'BLS-FEC'
-        #         # Debug: Transmit Nothing:
-        #         # self.type = 'EMPTY-BLS'
-        #         return
-        #
-        #     # # BLS all in one stream
-        #     # if (self.t - self.bls_max) <= self.bls_num:
-        #     #     self.type = 'EMPTY-BLS'
-        #     #     # self.criterion = True
-        #     #     # self.type = 'BLS-FEC'
-        #     #     return
-        #
-        #     # End BLS-FEC transmission:
-        #     if (self.t - self.bls_max) > np.max(self.bls_num):
-        #         self.bls_flag = False
-        #         self.bls_num = 0
-        #         self.bls_max = 0
+
+            # # # BLS distributed:
+            # if (self.t - self.bls_max) in self.bls_num:
+            #     self.criterion = True
+            #     self.type = 'BLS-FEC'
+            #     # Debug: Transmit Nothing:
+            #     # self.type = 'EMPTY-BLS'
+            #     return
+
+            # # BLS all in one stream
+            if (self.t - self.bls_max) <= self.bls_num:
+
+                delta_hat = 1 / (self.bls_num * (1 - self.eps_mean[0]))
+                r_bn = max(self.cfg.param.er_rates[self.curr_ch:])
+                criterion = (delta_hat <= r_bn)  # Continue bls transmission.
+                if criterion:
+                    self.type = 'EMPTY-BLS'
+                    return
+
+                else:
+                    self.bls_flag = False
+                    self.bls_num = 0
+                    self.bls_max = 0
+
+                # Stream - old:
+                # self.type = 'EMPTY-BLS'
+                # # self.criterion = True
+                # # self.type = 'BLS-FEC'
+                # return
+
+            # End BLS-FEC transmission:
+            if (self.t - self.bls_max) > np.max(self.bls_num):
+                self.bls_flag = False
+                self.bls_num = 0
+                self.bls_max = 0
 
         # 2.2 Blank Spaces:
         # indication to start a BLS-FEC transmission.
@@ -205,21 +257,16 @@ class Encoder:
         #         self.bls_flag = False
 
         # 2.3 FB-FEC rule:
-        # if in_fb[0] is not None:  # Feedback is arrived
 
-        self.update_delta()
-        self.criterion = (self.delta[0] > 0)  # True is FB-FEC
+        if in_fb[0] is not None:  # Feedback is arrived
+            self.criterion = (self.delta[0] > 0)  # True is FB-FEC
 
         # Optional: Use stat_max for criterion:
         if self.cfg.param.er_estimate_type == 'stat_max':
             self.criterion = (self.delta[1] > 0)  # True is FB-FEC
 
         # # Set transmission type:
-        # if self.criterion and not self.fec_flag and self.type == '':
-        #     self.type = 'FB-FEC'
-        #     return
-        # Set transmission type:
-        if self.criterion and self.fec_flag != 'FEC Transmit' and self.type == '':
+        if self.criterion and self.type == '':
             self.type = 'FB-FEC'
             return
 
@@ -232,7 +279,7 @@ class Encoder:
             last_packet = self.pt_buffer.fifo_items()[-1].nc_serial
             w_max_new = self.w_max + 1
             if w_max_new > last_packet:
-                self.type = 'EMPTY_FEC'
+                self.type = 'EMPTY_BUFFER'
                 return
 
             if w_max_new - self.w_min > self.EOW:
@@ -257,19 +304,19 @@ class Encoder:
             self.eps_est.update_acks_tracker(ack=all_acks)
 
         if fb_packet is None:
-            curr_ch = 0
+            self.curr_ch = 0
         else:
-            curr_ch = len(self.cfg.param.er_rates) if fb_packet.src == 'd_fb' else \
+            self.curr_ch = len(self.cfg.param.er_rates) if fb_packet.src == 'd_fb' else \
                 int(fb_packet.src[-1]) - 1
 
         est_type = self.cfg.param.er_estimate_type
-        if est_type == 'genie':  # TODO: Fix the genie estimation.
-            leng_ = min(len(self.ct_buffer.fifo_items()), self.rtt+2)
-            eps_mean = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='genie', leng_=leng_)
-            eps_max = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='genie', leng_=leng_)
+        if est_type == 'genie':
+            win_length = min(len(self.ct_buffer.fifo_items()), self.rtt+1)
+            eps_mean = self.eps_est.eps_estimate(self.t, self.curr_ch, 'genie', win_length, self.empty_indx)
+            eps_max = self.eps_est.eps_estimate(self.t, self.curr_ch, 'genie', win_length, self.empty_indx)
         else:
-            eps_mean = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='stat')
-            eps_max = self.eps_est.eps_estimate(t=self.t, ch=curr_ch, est_type='stat_max')
+            eps_mean = self.eps_est.eps_estimate(t=self.t, ch=self.curr_ch, est_type='stat')
+            eps_max = self.eps_est.eps_estimate(t=self.t, ch=self.curr_ch, est_type='stat_max')
 
         if self.cfg.param.print_flag:
             print(f'eps_hist mean: {eps_mean[0]:.2f}')
@@ -295,25 +342,34 @@ class Encoder:
 
         if len(self.pt_buffer) > 0:  # Packet buffer is not empty
 
-            last_packet = self.pt_buffer.fifo_items()[-1]
-            if last_packet.src == 's_ff':
-                if self.t % self.rtt == 0 and self.t > 0:
-                    self.fec_flag = 'Start FEC Transmit'
-            else:
-                if last_packet.fec_type == 'FEC':
-                    self.fec_flag = 'FEC Receive'
-                elif last_packet.fec_type != 'FEC' and self.fec_flag == 'FEC Receive':
-                    self.fec_flag = 'Start FEC Transmit'
+            # Old version - probably can delete - Activate for FEC by time
+            # last_packet = self.pt_buffer.fifo_items()[-1]
+            # if last_packet.src == 's_ff':
+            #     if self.t % self.rtt == 0 and self.t > 0:
+            #         self.fec_flag = 'Start FEC Transmit'
+            # else:
+            #     if last_packet.fec_type == 'FEC' or (last_packet.nc_header[0][0] % self.rtt == 1):
+            #         self.fec_flag = 'FEC Receive'
+            #     elif last_packet.fec_type != 'FEC' and self.fec_flag == 'FEC Receive':
+            #         self.fec_flag = 'Start FEC Transmit'
+
+            #  New version - Activate for FEC by time
+            # last_packet = self.pt_buffer.fifo_items()[-1]
+            # if self.fec_flag != 'Start FEC Transmit':
+            #     if last_packet.src == 's_ff':
+            #         if self.t % self.rtt == 0 and self.t > 0:
+            #             self.fec_flag = 'Start FEC Transmit'
+            #     elif last_packet.nc_header[0][1] % (self.rtt-1) == 0 and last_packet.nc_header[0][1] > 0:
+            #         self.fec_flag = 'Start FEC Transmit'
 
             # A feedback arrived: Update the corresponding ct ack
-            ack_id = in_fb[0]
             ack = in_fb[1]
-
-            for ind_c, ct in enumerate(self.ct_buffer.fifo_items()):
-                channels_num = len(self.cfg.param.er_rates)
-                if ct[0] == self.p_id - int(self.rtt + channels_num + 1):
-                    self.ct_buffer.fifo_items()[ind_c][3] = ack
-                    break
+            if ack is not None:
+                for ind_c, ct in enumerate(self.ct_buffer.fifo_items()):
+                    channels_num = len(self.cfg.param.er_rates)
+                    if ct[0] == self.p_id - int(self.rtt + 2):  # 2 instead of + channels_num + 1
+                        self.ct_buffer.fifo_items()[ind_c][3] = ack
+                        break
 
             # Update w_min:
             self.update_w_min()
@@ -325,18 +381,18 @@ class Encoder:
             # Next transmission:
             if 'EMPTY' not in self.type:
                 ct = [self.w_min, self.w_max]
-
-                # Update the ct_buffer:
                 self.ct_buffer.put([self.p_id, ct, self.type, None])  # p_id, ct, fec/new, ack
-                self.p_id += 1
             else:
-                ct = None #[None, None]
-                self.p_id += 1  # Not sure if this is correct
+                ct = [None, None]
+                self.empty_indx.append(int(self.t))
 
-        else:  # Packet buffer is empty
-            # Buffer begins empty - has nothing to transmit
+            # Update the ct_buffer:
+            self.p_id += 1
+
+        else:  # Packet buffer is empty - Buffer begins empty - has nothing to transmit
             ct = None
             self.type = 'EMPTY_BEGIN'
+            self.eps_mean = [1]
 
         self.print(in_fb=in_fb, is_arrived=pt_buffer[0], print_file=print_file)
 
@@ -392,6 +448,3 @@ class Encoder:
 
         return
 
-###
-# change eps to run from here so a percise amount in the genie
-# also: now check for more channels. souldnt be too hard.

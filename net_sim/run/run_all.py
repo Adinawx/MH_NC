@@ -113,6 +113,11 @@ def run_all():
     else:
         os.makedirs(new_folder)
 
+    # Prevent problems loading data:
+    if cfg.param.er_estimate_type == "genie":
+        cfg.param.er_load = "from_csv"
+        print("WARNING: CHANGING ER_LOAD TO from_csv FOR GENIE ESTIMATION")
+
     rep = cfg.param.rep
     rtt_list = cfg.param.rtt
 
@@ -172,7 +177,7 @@ def run_all():
         er_var_num = len(varying_indices)
         channels_num = len(cfg.param.er_rates)
 
-        if er_var_num == channels_num: # all channels are varying
+        if er_var_num == channels_num:  # all channels are varying
             # Choose a fixed channel rate to plot - Can be changed manually.
             fixed_ind = 0
             fixed_er_rate = cfg.param.er_var_values[fixed_ind]
