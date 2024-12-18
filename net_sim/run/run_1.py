@@ -119,12 +119,14 @@ def create_network_and_run(cfg, rtt, er_rates):
 
             # Read Data From A File #################################################################
             er_type = 'BEC'
+            channel_name = "erasure"
             if "GE" in cfg.param.er_type and curr_ch == cfg.param.ge_channel:
                 er_type = cfg.param.er_type
+                channel_name = "GE"
 
             cfg.param.er_series_path = f"{cfg.param.project_folder}" \
                                        f"\\Data\\{er_type}\\ch_{curr_ch}\\" \
-                                       f"erasure_series_eps_{eps:.2f}_series_{cfg.run_index.rep_index}.csv"
+                                       f"{channel_name}_series_eps_{eps:.2f}_series_{cfg.run_index.rep_index}.csv"
             path = cfg.param.er_series_path
             ########################################################################################
 
