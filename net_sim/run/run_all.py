@@ -1,10 +1,14 @@
 import itertools
 import os
+import shutil
+
 import numpy as np
+import pandas as pd
+from matplotlib import pyplot as plt
+
 from utils.config import CFG
 from utils.config_setup import Config
 from run import run_1
-from run import plot_results
 
 
 def generate_er_rates_grid(varying_indices, fixed_er_rates, start=0.1, stop=0.9, steps=9):
@@ -103,9 +107,14 @@ def load_results(cfg, rtt, er_rates):
     return eta, mean_delay, max_delay
 
 
-def run_all():
+def run_all(prot_type=None):
     cfg = Config.from_json(CFG)
+    if prot_type is not None:
+        cfg.param.prot_type = prot_type
+        cfg.param.results_filename = f"{cfg.param.results_filename_base}\\{cfg.param.prot_type}"
+    print(f"Running {cfg.param.prot_type} protocol")
 
+    # Initialize: #####################################################################################
     new_folder = os.path.join(cfg.param.results_folder, cfg.param.results_filename)
     if os.path.exists(new_folder):
         print("ERROR: NEW FOLDER NAME ALREADY EXISTS. CHANGE DIRECTORY TO AVOID OVERWRITE TRAINED MODEL")
@@ -117,96 +126,263 @@ def run_all():
     if cfg.param.er_estimate_type == "genie":
         cfg.param.er_load = "from_csv"
         print("WARNING: CHANGING ER_LOAD TO from_csv FOR GENIE ESTIMATION")
+    #########################################################################################################
 
+    # Load Parameters: ######################################################################################
     rep = cfg.param.rep
     rtt_list = cfg.param.rtt
+    er_var_values = cfg.param.er_var_values
+    ###########################################################################################################
 
+    # Generate Erasures Grid: #################################################################################
     varying_indices = cfg.param.er_var_ind  # Define the indices of the er_rates that will vary
     all_er_rates = cfg.param.er_rates
-
-    start = cfg.param.er_var_values[0]
-    stop = cfg.param.er_var_values[1]
-    steps = cfg.param.er_var_values[2]
+    start = er_var_values[0]
+    stop = er_var_values[1]
+    steps = er_var_values[2]
     er_rates_grid = generate_er_rates_grid(varying_indices, all_er_rates, start=start, stop=stop, steps=steps)
+    ############################################################################################################
 
-    eta = np.zeros([len(rtt_list), len(er_rates_grid), rep])
-    mean_delay = np.zeros([len(rtt_list), len(er_rates_grid), rep])
-    max_delay = np.zeros([len(rtt_list), len(er_rates_grid), rep])
-
+    # Run the simulations: #########################################################################################
+    all_df = pd.DataFrame()
     for rtt_idx, rtt in enumerate(rtt_list):
+        cfg.param.rtt = rtt  # Update the RTT value for the current run
+        cfg.run_index.rtt_index = rtt_idx  # Update the erasure rates for the current run
 
-        cfg.param.rtt = rtt  # needed in the AC nodes.
-
+        # Run all erasure rates options:
         for er_idx, er_rates in enumerate(er_rates_grid):
+            cfg.param.er_rates = er_rates  # Update the erasure rates for the current run
+            cfg.run_index.er_var_index = er_idx  # Update the erasure rates for the current run
+
+            # Run all repetitions:
+            all_r_list = []
             for r in range(rep):
+                cfg.run_index.rep = r  # Update the repetition number for the current run
+
                 print(f"--- RTT={int(rtt)}, er_rates={er_rates}, Repetition {r + 1} ---")
+                with open(os.path.join(new_folder, f"metrics.txt"), "a") as f:
+                    f.write(f"--- RTT={int(rtt)}, er_rates={er_rates}, Repetition {r + 1} ---\n")
 
-                cfg.param.er_rates = er_rates
+                # # Read Data From A File #################################################################
+                # # When reading data from a file, determine the relevant path using {r}.
+                # # Later: AAA=Channel index and BBB=eps_hist.
+                # cfg.param.er_series_path = f"{cfg.param.project_folder}" \
+                #                            f"\\Data\\{cfg.param.er_type}\\AAA\\" \
+                #                            f"erasure_series_eps_BBB_series_{r}.csv"
+                # ########################################################################################
 
-                # When reading data from a file, determine the relevant path using {r}.
-                # Later: AAA=Channel index and BBB=eps_hist.
-                cfg.param.er_series_path = f"{cfg.param.project_folder}" \
-                                           f"\\Data\\{cfg.param.er_type}\\AAA\\" \
-                                           f"erasure_series_eps_BBB_series_{r}.csv"
+                # Run one repetition and log results ###################################################
+                df_list = run_1.run_1(cfg, rtt, er_rates, new_folder)
 
-                eta_1, mean_delay_1, max_delay_1 = run_1.run_1(cfg, rtt, er_rates, new_folder)
+                if df_list is None:  # Skip the repetition if it failed - e.g. nothing decoded.
+                    continue
 
-                eta[rtt_idx, er_idx, r] = eta_1
-                mean_delay[rtt_idx, er_idx, r] = mean_delay_1
-                max_delay[rtt_idx, er_idx, r] = max_delay_1
+                all_r_list.append(df_list)
+                shutil.copy("ff_log.txt", os.path.join(cfg.param.results_folder, cfg.param.results_filename,
+                                                       f"RTT={rtt}_ER_I={er_idx}_r={r}_ff_log.txt"))
+                ########################################################################################
 
-            # Print final mean:
-            print("----Final Results----")
-            print(f"RTT={rtt}")
-            print(f"Channel rates: {1 - np.array(er_rates)}")
-            print(f"Mean eta: {np.mean(eta[rtt_idx, er_idx, :]):.2f} +- {np.std(eta[rtt_idx, er_idx, :]):.2f}")
-            print(
-                f"Mean delay: {np.mean(mean_delay[rtt_idx, er_idx, :]):.2f} +- {np.std(mean_delay[rtt_idx, er_idx, :]):.2f}")
-            print(
-                f"Max delay: {np.mean(max_delay[rtt_idx, er_idx, :]):.2f} +- {np.std(max_delay[rtt_idx, er_idx, :]):.2f}")
-            print(f"\n")
+            # Concatenate all DataFrames row-wise for each index across the sublists
+            new_df = pd.concat(all_r_list, keys=range(len(all_r_list)), names=["Rep"])
+            new_df = new_df.reset_index()
+            new_df = new_df.drop(columns=['Index', 'Run'])
+            new_df["Eps"] = cfg.param.er_rates[cfg.param.er_var_ind[0]]
+            new_df = new_df[["Eps", "Rep"] + [col for col in new_df.columns if col not in ["Rep", "Eps"]]]
 
-            # Save results for this RTT and er_rates configuration
-            save_results(cfg, rtt, er_rates, eta[rtt_idx, :, :], mean_delay[rtt_idx, :, :], max_delay[rtt_idx, :, :])
+            all_df = pd.concat([all_df, new_df], ignore_index=True)
+            # Save to results folder:
+            file_path = os.path.join(cfg.param.results_folder, cfg.param.results_filename,
+                                     f"RTT={rtt}_ER_I={er_idx}_r={r}_all_df.csv")
+            all_df.to_csv(file_path, index=False)
 
-        # Plot mean results vs er_rate: (mean over all reps)
-        eta_plt = np.mean(eta[rtt_idx, :, :], axis=-1)
-        mean_delay_plt = np.mean(mean_delay[rtt_idx, :, :], axis=-1)
-        max_delay_plt = np.mean(max_delay[rtt_idx, :, :], axis=-1)
+        # Save the results for the current RTT value
+        all_df.to_csv(os.path.join(new_folder, f"all_df_rtt_{rtt}.csv"), index=False)
 
-        er_var_num = len(varying_indices)
-        channels_num = len(cfg.param.er_rates)
+        # Print the mean and std values for each node #################################################
+        print("\n-------------------------------")
+        print(f"Mean and std values for RTT={rtt}")
+        with open(os.path.join(new_folder, f"metrics.txt"), "a") as f:
+            print("\n-------------------------------")
+            f.write(f"Mean and std values for RTT={rtt}\n")
 
-        if er_var_num == channels_num:  # all channels are varying
-            # Choose a fixed channel rate to plot - Can be changed manually.
-            fixed_ind = 0
-            fixed_er_rate = cfg.param.er_var_values[fixed_ind]
+        # print the mean and std values for each node
+        for eps in all_df['Eps'].unique():
+            for node in all_df['Node'].unique():
 
-        elif er_var_num < channels_num:  # some channels are fixed
-            fixed_ind = [i for i in range(len(cfg.param.er_rates)) if i not in varying_indices][0]
-            fixed_er_rate = cfg.param.er_rates[fixed_ind]
+                print(f"Node {node}, Eps {eps}")
+                with open(os.path.join(new_folder, f"metrics.txt"), "a") as f:
+                    f.write(f"Node {node}, Eps {eps}\n")
 
-        else:
-            print("ERROR: The number of varying indices is larger than the number of channels.")
-            return
+                for col in all_df.columns:
+                    if col in ['Node', 'Eps', 'Rep']:
+                        continue
+                    mean_value = all_df[(all_df['Node'] == node) & (all_df['Eps'] == eps)][col].mean()
+                    std_value = all_df[(all_df['Node'] == node) & (all_df['Eps'] == eps)][col].std()
+                    print(f"mean {col}: {mean_value:.2f} ± {std_value:.2f}")
+                    # print to file:
+                    with open(os.path.join(new_folder, f"metrics.txt"), "a") as f:
+                        f.write(f"mean {col}: {mean_value:.2f} ± {std_value:.2f}\n")
 
-        plot_results.plot_2d_vs_er_rate(cfg, rtt, er_rates_grid, eta_plt, mean_delay_plt, max_delay_plt,
-                                        fix_ind=fixed_ind,
-                                        fix_er_rate=fixed_er_rate)
+                print("-------------------------------")
+                with open(os.path.join(new_folder, f"metrics.txt"), "a") as f:
+                    f.write("-------------------------------\n")
+        ########################################################################################
 
-        if er_var_num == 2:
-            plot_results.plot_3d_vs_er_rates(cfg, rtt, er_rates_grid, eta_plt, mean_delay_plt, max_delay_plt)
+    a = 5
+    return all_df
 
-        # TODO: Add the following plots:
-        # Plot mean results vs RTT: (mean over all reps)
-        # er_idx_plt = 0 # Choose a specific er_rate to plot
-        # eta_plt = np.mean(eta[:, er_idx_plt, :], axis=-1)
-        # mean_delay_plt = np.mean(mean_delay[:, er_idx_plt, :], axis=-1)
-        # max_delay_plt = np.mean(max_delay[:, er_idx_plt, :], axis=-1)
-        # plot_results.plot_2d_vs_rtt(cfg, rtt_list, er_rates_grid[er_idx_plt], eta_plt, mean_delay_plt, max_delay_plt)
 
-        a = 5
+def print_1_metric(df1, node_value=-1):
+    # Plot ################################################################################################
+    # Calculate the mean across all DataFrames for each row (grouped by Index)
+    mean_df1 = df1.groupby(["Node", 'Eps']).mean().reset_index()
+
+    # Filter both DataFrames for the selected Node
+    df_node1 = mean_df1[mean_df1['Node'] == node_value]
+
+    # Create a figure with subplots (1 row, 5 columns for each metric)
+    fig, axes = plt.subplots(1, 5, figsize=(20, 6), sharex=True, sharey=False)
+
+    # List of columns to plot
+    metrics = ['Normalized Goodput', 'Delivery Rate', 'Channel Utilization Rate', 'Mean Delay', 'Max Delay',
+               'Mean NC Delay', 'Max NC Delay']
+
+    # Plot each metric for both DataFrames
+    for i, column in enumerate(metrics):
+        # Plot from the first DataFrame
+        axes[i].plot(df_node1['Eps'], df_node1[column], label=f'{column} (df)', linestyle='-', color='blue')
+        # Plot from the second DataFrame
+        axes[i].set_xlabel('Eps')
+        axes[i].set_ylabel(column)
+        axes[i].set_title(f'{column} vs Eps')
+
+        # Set y-axis limits based on the column
+        if column in ['Normalized Goodput', 'Bandwidth']:
+            axes[i].set_ylim(0, 1)  # Limit for Goodput and Bandwidth
+        elif column == 'Channel Utilization Rate':
+            axes[i].set_ylim(0, 0.15)  # Limit for Channel Utilization Rate
+
+        axes[i].grid(True)  # Add grid to each subplot
+        axes[i].legend()
+
+    # Adjust layout
+    plt.tight_layout()
+    plt.suptitle(f'Node {node_value} - Metrics vs Eps', fontsize=16)
+    plt.subplots_adjust(top=0.85)  # Adjust to make room for the main title
+
+    plt.show()
+    a = 5
+    ######################################################################################################
+    # Single plot for each metric
+    # for column in mean_df.columns:
+    #     if column not in ['eps', 'Node']:  # Skip 'eps' and 'Node' as they are index levels
+    #         plt.figure(figsize=(8, 6))
+    #
+    #         # Loop through each unique 'Node'
+    #         for node in mean_df.index.get_level_values('Node').unique():
+    #             node_data = mean_df[mean_df.index.get_level_values('Node') == node]
+    #             plt.plot(node_data.index.get_level_values('Eps'), node_data[column], label=f'Node {node}')
+    #
+    #         plt.title(f'{column} as a function of eps')
+    #         plt.xlabel('eps')
+    #         plt.ylabel(column)
+    #         plt.legend(title="Node")
+    #         plt.grid(True)
+    #         plt.show()
+    ######################################################################################################
+
+
+def print_metrics_for_all_dfs(dfs, labels, node_value=None, filename=None):
+    """
+    Plot metrics for any number of DataFrames with labels.
+
+    Parameters:
+    dfs (list of pd.DataFrame): List of DataFrames to plot metrics from.
+    labels (list of str): List of labels corresponding to each DataFrame.
+    node_value (int): Node value to filter data.
+    """
+
+    # Validate input
+    if len(dfs) < 1:
+        raise ValueError("At least one DataFrame is required.")
+    if len(dfs) != len(labels):
+        raise ValueError("The number of DataFrames must match the number of labels.")
+
+    # List of columns to plot
+    metrics = ['Normalized Goodput', 'Delivery Rate', 'Channel Utilization Rate', 'Mean Delay', 'Max Delay']
+
+    # Prepare data: Calculate means and filter for the selected Node
+    dfs_mean = []
+    for df in dfs:
+        dfs_mean.append(df.groupby(['Node', 'Eps']).mean().reset_index())
+
+    if node_value is None:
+        node_value = dfs_mean[0]['Node'].unique()
+    else:
+        node_value = [node_value]
+
+    for n in node_value:  # Plot for each node
+
+        dfs_mean_node = [df[df['Node'] == n] for df in dfs_mean]
+
+        fig, axes = plt.subplots(1, len(metrics), figsize=(5 * len(metrics), 6), sharex=True, sharey=False)
+
+        for i, column in enumerate(metrics):
+            for j, (df_node, label) in enumerate(zip(dfs_mean_node, labels)):
+                axes[i].plot(df_node['Eps'], df_node[column], label=f'{label}', linestyle='-', alpha=0.7)
+
+            axes[i].set_xlabel('Eps')
+            axes[i].set_ylabel(column)
+            axes[i].set_title(f'{column} vs Eps')
+            # axes[i].set_xlim(df_node['Eps'].min(), df_node['Eps'].max())
+
+            # Set y-axis limits based on the column
+            if column in ['Normalized Goodput', 'Delivery Rate']:
+                axes[i].set_ylim(0, 1)
+
+            axes[i].grid(True)
+            axes[i].legend()
+            axes[i].set_ylim(bottom=-0.01)  # Default: keep y-axis starting from 0 for other metrics
+
+        plt.tight_layout()
+        plt.suptitle(f'Node {n} - Metrics vs Eps', fontsize=16)
+        plt.subplots_adjust(top=0.85)
+        # plt.show()
+
+        # Save figure:
+        fig.savefig(f'{filename}\\Node_{n}_metrics_vs_eps.png', dpi=300)
+
+    return
+
+
+def load_and_plot(dfs_names):
+    cfg = Config.from_json(CFG)
+    filename = os.path.join(cfg.param.results_folder, cfg.param.results_filename_base)
+
+    df_list = []
+    for df_name in dfs_names:
+        df = pd.read_csv(f'{filename}\\{df_name}\\all_df_rtt_{cfg.param.rtt[0]}.csv')
+        df_list.append(df)
+
+    print_metrics_for_all_dfs(dfs=df_list, labels=dfs_names, filename=filename)
 
 
 if __name__ == '__main__':
-    run_all()
+    df_mixall = run_all(prot_type="MIXALL")
+
+    df_ac_fec = run_all(prot_type="AC-FEC")
+
+    df_bs_empty = run_all(prot_type="BS-EMPTY")
+
+    df_ac_empty = run_all(prot_type="AC-EMPTY")
+    df_bs_fec = run_all(prot_type="BS-FEC")
+
+    cfg = Config.from_json(CFG)
+    filename = os.path.join(cfg.param.results_folder, cfg.param.results_filename_base)
+
+    print_metrics_for_all_dfs(dfs=[df_mixall, df_ac_fec, df_ac_empty, df_bs_fec, df_bs_empty],
+                              labels=['MIXALL', 'AC-FEC', 'AC-EMPTY', 'BS-FEC', 'BS-EMPTY'],
+                              filename=filename)
+
+    # dfs_names = ['MIXALL', 'AC-FEC', 'AC-EMPTY', 'BS-FEC', 'BS-EMPTY']
+    # load_and_plot(dfs_names)
