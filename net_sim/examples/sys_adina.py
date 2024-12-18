@@ -116,7 +116,7 @@ def run_1(cfg):
     ######################################
 
     env = simpy.Environment()
-    timesteps = cfg.param.timesteps
+    T = cfg.param.T
     rtt = cfg.param.rtt
     er_load = cfg.param.er_load
 
@@ -177,14 +177,14 @@ def run_1(cfg):
         fb_channels[i - 1].out = nc_nodes[i - 1].fb_in
     nc_nodes[0].fb_out.out = source_term.sink
 
-    env.run(until=timesteps)
+    env.run(until=T)
 
     ### New - 18/8  ####################################################################################################
     # Logging
     log_df = pd.DataFrame(columns=[f'node{i}'.ljust(90) for i in range(num_of_nodes)])
 
     # Add rows to the DataFrame for each timestep
-    for timestep in range(timesteps):
+    for timestep in range(T):
         log_df.loc[timestep] = [''] * num_of_nodes  # Initialize values to 0 for each node
 
     for curr_node in nc_nodes:
@@ -220,7 +220,7 @@ def run():
     # Config params:
     rep = cfg.param.rep
     channels_num = len(cfg.param.er_rates)
-    timesteps = cfg.param.timesteps
+    T = cfg.param.T
     rtt_list = cfg.param.rtt
     num_of_rtt = len(rtt_list)
 
@@ -249,9 +249,9 @@ def run():
             dec_times = np.load(f"{new_folder}\\dec_times.npy")
             last_dec = dec_times.shape[0]
 
-            erasures_hist = np.zeros([rep, channels_num, timesteps])
+            erasures_hist = np.zeros([rep, channels_num, T])
             for n in range(channels_num):
-                in_delay = int(n*(rtt/2+1))  # Each node receives the first packet after n*(rtt/2+1) timesteps.
+                in_delay = int(n*(rtt/2+1))  # Each node receives the first packet after n*(rtt/2+1) T.
                 erasures_hist[r, n, in_delay:] = np.load(f"{new_folder}\\erasures_ch{n}.npy")
             erasures_num = [int(np.sum(1-erasures_hist[r, n, int(n*(rtt/2+1)):])) for n in range(channels_num)] # TODO: A bug in the erasures log.
 
@@ -265,7 +265,7 @@ def run():
             # delay_i = dec_times[:last_dec] - np.arange(last_dec) - channels_num
             delay_i = dec_times[:last_dec] - send_times[:last_dec] - channels_num
 
-            eta[rtt_idx, r] = last_dec / (timesteps - (channels_num + 1) * rtt / 2)  # +1: due to the inherent 1 delay of each node.
+            eta[rtt_idx, r] = last_dec / (T - (channels_num + 1) * rtt / 2)  # +1: due to the inherent 1 delay of each node.
             mean_delay[rtt_idx, r] = np.mean(delay_i, axis=0)
             max_delay[rtt_idx, r] = np.max(delay_i)
 
@@ -292,7 +292,7 @@ def run():
     n_plt = 1
     plt.figure()
     for r_plt in range(rep):
-        plt.plot(range(int(n_plt*(rtt/2+1)), timesteps), erasures_hist[r_plt, n_plt, int(n_plt*(rtt/2+1)):], label=f"rep {r_plt}")
+        plt.plot(range(int(n_plt*(rtt/2+1)), T), erasures_hist[r_plt, n_plt, int(n_plt * (rtt / 2 + 1)):], label=f"rep {r_plt}")
     plt.legend()
     plt.grid()
     plt.title(f"Erasure series for node {n_plt}")

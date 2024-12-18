@@ -6,8 +6,7 @@ import simpy
 from ns.port.fifo_store import FIFO_Store
 import random  # For debug only. Erase eventually
 from acrlnc_node.ac_node1 import ACRLNC_Node
-from utils.config import CFG
-from utils.config_setup import Config
+from acrlnc_node.ac_node_mix_all import ACRLNC_Node_Mix_All
 import numpy as np
 
 
@@ -48,7 +47,13 @@ class NCEncoder:
         self.hist_store_fb_time = []  # New - 18/8
         self.hist_erasures = []
 
-        self.ac_node = ACRLNC_Node(env=env, cfg=cfg)
+        ## Choose Protocol ###########################################
+        if cfg.param.prot_type != "MIXALL":
+            self.ac_node = ACRLNC_Node(env=env, cfg=cfg)
+        else:
+            self.ac_node = ACRLNC_Node_Mix_All(env=env, cfg=cfg)
+        ##############################################################
+
 
         # Typically, the following FIFO_stores are used in order to pass the current packet to the nc encoder
         # (so, for example, len = 0 or 1):
@@ -157,23 +162,30 @@ class NCEncoder:
                 self.out_fb.nc_serial = out_fb[2]  # dec
 
                 # 4. log
+                # save ct type history:
+                curr_ch = 0 if self.element_id == 'enc_node0' else int(
+                    ff_packets.src[-1]) + 1
 
                 # tran_times in the Transmitter
-                if self.element_id == 'enc_node0':  # the first node = Transmitter
-                    tran_times = np.array(self.ac_node.send_times.fifo_items())
-                    np.save(r"{}\tran_times.npy".format(res_folder), tran_times)
+                # if self.element_id == 'enc_node0':  # the first node = Transmitter
+                tran_times = np.array(self.ac_node.send_times.fifo_items())
+                np.save(r"{}\trans_times_ch={}.npy".format(res_folder, curr_ch), tran_times)
 
-                # dec_time in the Receiver
+                # Arrival times in each node
+                arrival_times = np.array(self.ac_node.arrival_times.fifo_items())
+                np.save(r"{}\arrival_times_ch={}.npy".format(res_folder, curr_ch), arrival_times)
+
+                # Semi dec_time in each node
+                dec_times = np.array(self.ac_node.semi_dec_times.fifo_items())
+                np.save(r"{}\semi_dec_times_ch={}.npy".format(res_folder, curr_ch), dec_times)
+
+                # dec_time - in the receiver only
                 if fb_packets is not None and fb_packets.src == 'd_fb':  # the last node = Receiver
                     dec_times = np.array(self.ac_node.dec_times.fifo_items())
                     np.save(r"{}\dec_times.npy".format(res_folder), dec_times)
 
-                # save ct type history:
-                curr_ch = 0 if self.element_id == 'enc_node0' else int(
-                    ff_packets.src[-1]) + 1  # relevant for Genie estimation
-
                 ct_type = self.ac_node.ct_type_hist
-                np.save(r"{}\ct_type_ch={}.npy".format(res_folder, curr_ch), ct_type)
+                np.save(r"{}\trans_types_ch={}.npy".format(res_folder, curr_ch), ct_type)
 
                 # log erasure series:
                 erasure_ = 1 if ff_recep_flag else 0  # 0=erasure, 1=reception
