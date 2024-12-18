@@ -7,7 +7,7 @@ CFG = {
         "rtt": [20],  # rtt
         "project_folder": r"C:\Users\adina\Technion\Research\MH_Project\Code",  # Code folder (And data)
         "results_folder": r"C:\Users\adina\Technion\Research\MH_Project\Results",  # results folder
-        "results_filename_base": "full_run_try_GE",  # results filename - must change each run
+        "results_filename_base": "full_run_try_GE1",  # results filename - must change each run
         "results_filename": "",
         "T": 1500,  # number of timesteps in each rep
         "debug": False,  # debug flag
