@@ -175,8 +175,8 @@ class NCEncoder:
                 np.save(r"{}\arrival_times_ch={}.npy".format(res_folder, curr_ch), arrival_times)
 
                 # Semi dec_time in each node
-                dec_times = np.array(self.ac_node.semi_dec_times.fifo_items())
-                np.save(r"{}\semi_dec_times_ch={}.npy".format(res_folder, curr_ch), dec_times)
+                semi_dec_times = np.array(self.ac_node.semi_dec_times.fifo_items())
+                np.save(r"{}\semi_dec_times_ch={}.npy".format(res_folder, curr_ch), semi_dec_times)
 
                 # dec_time - in the receiver only
                 if fb_packets is not None and fb_packets.src == 'd_fb':  # the last node = Receiver

@@ -27,7 +27,6 @@ class Encoder:
         self.md = 0
         self.cnew = 0
         self.csame = 0
-        # self.eps = 0
         self.delta = [0, 0]  # [delta_mean, delta_max]
 
         self.fec_num = 0
@@ -378,15 +377,15 @@ class Encoder:
         ########################################################################################
 
         # Check for an IN-FEC packet: ##########################################################
-        last_packet = self.pt_buffer.fifo_items()[-1]
-        gap = last_packet.nc_serial - self.w_max
-        if gap > 0:
-            semi_new_packet = self.pt_buffer.fifo_items()[-gap]
-            # Meaning there is a packet that wasn't sent yet in the buffer
-            if 'NEW' not in semi_new_packet.fec_type:
-                self.w_max = self.w_max + 1
-                self.type = 'NEW-F2'
-                return
+        # last_packet = self.pt_buffer.fifo_items()[-1]
+        # gap = last_packet.nc_serial - self.w_max
+        # if gap > 0:
+        #     semi_new_packet = self.pt_buffer.fifo_items()[-gap]
+        #     # Meaning there is a packet that wasn't sent yet in the buffer
+        #     if 'NEW' not in semi_new_packet.fec_type:
+        #         self.w_max = self.w_max + 1
+        #         self.type = 'NEW-F'
+        #         return
         ########################################################################################
 
         # End Of Window: #######################################################################
@@ -438,7 +437,7 @@ class Encoder:
                         ep_rate_cut = self.cfg.param.er_rates[self.curr_ch:]
                         ep_bn = max(ep_rate_cut)  # bottleneck erase rate
                         ep_bn_idx = ep_rate_cut.index(ep_bn)  # bottleneck index
-                        self.bls_num = np.round(np.sum((self.rtt) * self.eps_mean[self.curr_ch:ep_bn_idx+1]))
+                        self.bls_num = np.round((self.rtt) * np.sum(self.eps_mean[self.curr_ch:ep_bn_idx+1]))
             return
         ##########################################################################################
 
