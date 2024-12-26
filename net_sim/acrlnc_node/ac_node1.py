@@ -1,5 +1,8 @@
 from acrlnc_node.encoder_new import Encoder
 from ns.port.fifo_store import FIFO_Store
+import numpy as np
+import copy
+np.random.seed(42)
 
 
 class ACRLNC_Node():
@@ -40,7 +43,8 @@ class ACRLNC_Node():
         # Encoder:
         self.enc = Encoder(cfg=cfg, env=env)
         self.eps_hist = []
-        # self.eps_est = EpsEstimator(cfg=cfg, env=env)  # Estimator of eps_hist.
+        self.trans_buffer = FIFO_Store(env, capacity=float('inf'),
+                                       memory_size=float('inf'))  # Buffer of source packets in the transmitter
 
         # Decoder:
         # self.packets_num = 0  # Number of info packets.
@@ -192,7 +196,8 @@ class ACRLNC_Node():
 
         return
 
-    def update_pt_buffer_add(self, in_packet_info, in_packet_recep_flag):
+    # OG
+    # def update_pt_buffer_add(self, in_packet_info, in_packet_recep_flag):
 
         # In packet info:
         self.in_pt = in_packet_info
@@ -226,6 +231,58 @@ class ACRLNC_Node():
                 # if 'NEW' in self.in_pt.fec_type:
                 self.arrival_times.put(self.t)
         return
+
+    # Poisson IN
+    def update_pt_buffer_add(self, in_packet_info, in_packet_recep_flag):
+
+        # poisson buffer distribution
+        if self.node_type == 'Transmitter':
+            self.trans_buffer.put(copy.deepcopy(in_packet_info))
+            lam = max(self.cfg.param.er_rates)
+            poisson = 1-np.random.poisson(lam=lam, size=1)
+            # print('poisson:', poisson)
+            if poisson > 0:
+                self.in_pt = self.trans_buffer.fifo_items()[0]
+                self.trans_buffer.get()
+            else:
+                self.in_pt = in_packet_info
+                self.in_pt.fec_type = 'EMPTY_SOURCE'
+                self.in_pt.nc_header = None
+                return
+        else:
+            # In packet info:
+            self.in_pt = in_packet_info
+
+        # Do not accept packets that contain nothing.
+        if isinstance(in_packet_info.nc_header, list):
+            if in_packet_info.nc_header[1][0] is None:
+                return
+        else:
+            if in_packet_info.nc_header is None:
+                return
+
+        if in_packet_recep_flag:
+            # Accept the packet:
+            # if self.in_pt.fec_type == 'NEW' or (self.in_pt.fec_type != 'NEW' and self.accept_fec()):
+            if 'NEW' in self.in_pt.fec_type or ('NEW' not in self.in_pt.fec_type and self.accept_fec()):
+
+                # Update the nc_id:
+                self.last_nc_id = self.last_nc_id + 1
+                self.in_pt.nc_serial = self.last_nc_id
+
+                # Insert the packet to the buffer:
+                self.pt_buffer.put(self.in_pt)
+
+                if self.node_type == 'Receiver':
+                    self.rece_buffer.put(self.in_pt)
+
+                self.last_packet_store = self.pt_buffer.fifo_items()[-1]
+
+                # # Update Arrival time:
+                # if 'NEW' in self.in_pt.fec_type:
+                self.arrival_times.put(self.t)
+        return
+
 
     def update_packet_num(self):
 

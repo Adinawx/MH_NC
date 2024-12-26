@@ -4,8 +4,8 @@ import simpy
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
-import matplotlib as mpl
-mpl.use("TkAgg")
+# import matplotlib as mpl
+# mpl.use("TkAgg")
 
 from run import set_sim_params
 from ns.port.airinterface import AirInterface
@@ -39,18 +39,18 @@ class RunLog:
         self.N = N
         self.n = n
 
-        self.arrival_times = np.load(f"{new_folder}\\arrival_times_ch={n}.npy")
-        self.semi_dec_times = np.load(f"{new_folder}\\semi_dec_times_ch={n}.npy")
+        self.arrival_times = np.load(f"{new_folder}/arrival_times_ch={n}.npy")
+        self.semi_dec_times = np.load(f"{new_folder}/semi_dec_times_ch={n}.npy")
         self.last_semi_dec = self.semi_dec_times.shape[0]
-        self.epsilons = np.load(f"{new_folder}\\eps_mean_ch={n}.npy")
+        self.epsilons = np.load(f"{new_folder}/eps_mean_ch={n}.npy")
 
         if n < N-1:  # if not the last node
-            self.erasures = np.load(f"{new_folder}\\erasures_ch={n+1}.npy")  # from the next node.
-            self.trans_times = np.load(f"{new_folder}\\trans_times_ch={n}.npy")
-            self.trans_types = np.load(f"{new_folder}\\trans_types_ch={n}.npy")
+            self.erasures = np.load(f"{new_folder}/erasures_ch={n+1}.npy")  # from the next node.
+            self.trans_times = np.load(f"{new_folder}/trans_times_ch={n}.npy")
+            self.trans_types = np.load(f"{new_folder}/trans_types_ch={n}.npy")
 
         if n == N-1:  # if the last node
-            self.dec_times = np.load(f"{new_folder}\\dec_times.npy")
+            self.dec_times = np.load(f"{new_folder}/dec_times.npy")
             self.last_dec = self.dec_times.shape[0]
 
     def set_types(self):
@@ -125,7 +125,7 @@ def create_network_and_run(cfg, rtt, er_rates):
                 channel_name = "GE"
 
             cfg.param.er_series_path = f"{cfg.param.project_folder}" \
-                                       f"\\Data\\{er_type}\\ch_{curr_ch}\\" \
+                                       f"/Data/{er_type}/ch_{curr_ch}/" \
                                        f"{channel_name}_series_eps_{eps:.2f}_series_{cfg.run_index.rep_index}.csv"
             path = cfg.param.er_series_path
             ########################################################################################
@@ -193,7 +193,6 @@ def create_network_and_run(cfg, rtt, er_rates):
     # Save locally:
     log_df.to_csv('ff_log.txt', sep='\t')
 
-
 def run_1(cfg, rtt, er_rates, new_folder):
     # Run Simulation #########################################
     time1 = time.time()
@@ -240,7 +239,7 @@ def run_1(cfg, rtt, er_rates, new_folder):
             num_periods = int(T / period_len)
             decoded_counts, _ = np.histogram(semi_dec_times, bins=np.linspace(0, T, num_periods + 1))
             bw = np.mean(decoded_counts) / period_len
-            ch_util_rate = all_empty / (T - int(rtt / 2) * n)
+            ch_use_rate = 1 - all_empty / (T - int(rtt / 2) * n)
             # print(f"last semi dec:{last_semi_dec}, arrival times:{len(arrival_times)}")
             delay = semi_dec_times - arrival_times[:last_semi_dec]
             mean_delay = np.mean(delay)
@@ -260,17 +259,17 @@ def run_1(cfg, rtt, er_rates, new_folder):
                 print(f"Node {n}:")
                 print(f"Normalized Goodput: {norm_goodput:.2f}")
                 print(f"Delivery Rate: {bw:.2f}")
-                print(f"Channel Utilization Rate: {ch_util_rate:.2f}")
+                print(f"Channel Usage Rate: {ch_use_rate:.2f}")
                 print(f"Mean Delay: {mean_delay:.2f}")
                 print(f"Max Delay: {max_delay:.2f}")
                 print(f"Mean NC Delay: {mean_nc_delay_semi:.2f}")
                 print(f"Max NC Delay: {max_nc_delay_semi:.2f}\n")
 
-            with open(f"{new_folder}\\metrics_nodes.txt", "a") as f:
+            with open(f"{new_folder}/metrics_nodes.txt", "a") as f:
                 f.write(f"Node {n}:\n")
                 f.write(f"Normalized Goodput: {norm_goodput:.2f}\n")
                 f.write(f"Delivery Rate: {bw:.2f}\n")
-                f.write(f"Channel Utilization Rate: {ch_util_rate:.2f}\n")
+                f.write(f"Channel Usage Rate: {ch_use_rate:.2f}\n")
                 f.write(f"Mean Delay: {mean_delay:.2f}\n")
                 f.write(f"Max Delay: {max_delay:.2f}\n")
                 f.write(f"Mean NC Delay: {mean_nc_delay_semi:.2f}\n")
@@ -282,7 +281,7 @@ def run_1(cfg, rtt, er_rates, new_folder):
                 "Node": n,
                 "Normalized Goodput": norm_goodput,
                 "Delivery Rate": bw,
-                "Channel Utilization Rate": ch_util_rate,
+                "Channel Usage Rate": ch_use_rate,
                 "Mean Delay": mean_delay,
                 "Max Delay": max_delay,
                 "Mean NC Delay": mean_nc_delay_semi,
@@ -318,7 +317,7 @@ def run_1(cfg, rtt, er_rates, new_folder):
     bw = np.mean(decoded_counts)/period_len
 
     all_empty = sum([run_log[i].empty_bls_num + run_log[i].empty_buffer_num for i in range(0, N-1)])
-    ch_util_rate = all_empty / ((N-1)*T - int(rtt/2) * (N-2)*(N-1)/2)
+    ch_use_rate = 1 - all_empty / ((N-1)*T - int(rtt/2) * (N-2)*(N-1)/2)
 
     arrival_times = run_log[0].arrival_times
     delay = dec_times - arrival_times[:last_dec]
@@ -332,7 +331,7 @@ def run_1(cfg, rtt, er_rates, new_folder):
     print("---- Full System ----")
     print(f"Normalized Goodput: {norm_goodput:.2f}")
     print(f"Delivery Rate: {bw:.2f}")
-    print(f"Channel Util Rate: {ch_util_rate:.2f}")
+    print(f"Channel Usage Rate: {ch_use_rate:.2f}")
     print(f"Mean Delay: {mean_delay:.2f}")
     print(f"Max Delay: {max_delay:.2f}")
     print(f"Mean NC Delay: {mean_nc_delay:.2f}")
@@ -343,7 +342,7 @@ def run_1(cfg, rtt, er_rates, new_folder):
         f.write("---- Full System ----\n")
         f.write(f"Normalized Goodput: {norm_goodput:.2f}\n")
         f.write(f"Delivery Rate: {bw:.2f}\n")
-        f.write(f"Channel Util Rate: {ch_util_rate:.2f}\n")
+        f.write(f"Channel Usage Rate: {ch_use_rate:.2f}\n")
         f.write(f"Mean Delay: {mean_delay:.2f}\n")
         f.write(f"Max Delay: {max_delay:.2f}\n")
         f.write(f"Mean NC Delay: {mean_nc_delay:.2f}\n")
@@ -356,7 +355,7 @@ def run_1(cfg, rtt, er_rates, new_folder):
         "Node": -1,
         "Normalized Goodput": norm_goodput,
         "Delivery Rate": bw,
-        "Channel Utilization Rate": ch_util_rate,
+        "Channel Usage Rate": ch_use_rate,
         "Mean Delay": mean_delay,
         "Max Delay": max_delay,
         "Mean NC Delay": mean_nc_delay,

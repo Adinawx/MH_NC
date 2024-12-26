@@ -35,7 +35,7 @@ class Encoder:
 
         self.global_rtt = len(cfg.param.er_rates) * (cfg.param.rtt+1)
         # self.global_rtt = self.rtt
-        self.EOW = int(2*(self.global_rtt))
+        self.EOW = int(1.5*(self.global_rtt))
         self.bls_num = 0
         self.bls_flag = False
         self.bls_time_start = 0

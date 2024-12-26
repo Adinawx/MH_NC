@@ -10,6 +10,7 @@ class EpsEstimator:
         self.t = 0
         self.ch = 0
         self.rtt = cfg.param.rtt
+        self.feedback_mem_factor = 3  # factor*RTT = feedback memory
 
         # memory holder of relevant packets. (get() when decoding happened):
         self.acks_tracker = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
@@ -36,8 +37,11 @@ class EpsEstimator:
 
     def stat(self):
 
+        memory = self.feedback_mem_factor * self.rtt
+
         # Contains all forward nodes
         acks = 1 - np.array(self.acks_tracker.fifo_items(), dtype=object)
+        acks = acks[-memory:]  # Keep only the last memory packets
         if len(acks) > 0:
             max_len = max(arr.shape[0] for arr in acks)  # Find the longest array
             # Stack arrays with NaN padding to match the max length
@@ -48,7 +52,6 @@ class EpsEstimator:
             # Compute the mean across each position, ignoring NaNs
             eps = np.nanmean(padded, axis=0)
         else:
-            # eps = [0.5]
             eps = [0.5]
 
         return eps
