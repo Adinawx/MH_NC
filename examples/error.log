@@ -1,0 +1,21 @@
+Traceback (most recent call last):
+  File "C:\Users\adina\Technion\Research\MH_Project\Code\MH_NC\net_sim\ns\port\nc_enc.py", line 144, in run
+    out_ff, out_fb = self.ac_node.run(in_packet_info=ff_packets,
+  File "C:\Users\adina\Technion\Research\MH_Project\Code\MH_NC\net_sim\acrlnc_node\ac_node.py", line 68, in run
+    self.output_packet_processing(in_packet_recep_flag)
+  File "C:\Users\adina\Technion\Research\MH_Project\Code\MH_NC\net_sim\acrlnc_node\ac_node.py", line 203, in output_packet_processing
+    eps = self.epsilon_estimation(in_packet_recep_flag)
+  File "C:\Users\adina\Technion\Research\MH_Project\Code\MH_NC\net_sim\acrlnc_node\ac_node.py", line 194, in epsilon_estimation
+    eps = self.eps_est.stat()
+  File "C:\Users\adina\Technion\Research\MH_Project\Code\MH_NC\net_sim\acrlnc_node\esp_est.py", line 16, in stat
+    acks = 1-np.array(self.acks_tracker.fifo_items())
+TypeError: unsupported operand type(s) for -: 'int' and 'NoneType'
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\adina\anaconda3\envs\research\lib\site-packages\simpy\core.py", line 246, in run
+    self.step()
+  File "C:\Users\adina\anaconda3\envs\research\lib\site-packages\simpy\core.py", line 204, in step
+    raise exc
+TypeError: unsupported operand type(s) for -: 'int' and 'NoneType'

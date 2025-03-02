@@ -1,0 +1,41 @@
+{
+    "param": {
+        "rtt": [
+            20
+        ],
+        "project_folder": "/data/adina/MH_Project",
+        "results_folder": "/data/adina/MH_Project/Results",
+        "results_filename_base": "poisson_BN_ei=2",
+        "results_filename": "",
+        "T": 1500,
+        "debug": false,
+        "rep": 5,
+        "er_rates": [
+            0.1,
+            0.4,
+            0.1,
+            0.1
+        ],
+        "er_var_ind": [
+            2
+        ],
+        "er_var_values": [
+            0.1,
+            0.8,
+            8
+        ],
+        "er_load": "from_csv",
+        "er_type": "BEC",
+        "ge_channel": 1,
+        "er_series_path": "",
+        "er_estimate_type": "stat",
+        "sigma": 1,
+        "print_flag": false,
+        "prot_type": ""
+    },
+    "run_index": {
+        "rep_index": 0,
+        "rtt_index": 0,
+        "er_var_index": 0
+    }
+}
