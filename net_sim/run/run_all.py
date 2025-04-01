@@ -7,11 +7,13 @@ import pandas as pd
 import matplotlib
 
 matplotlib.use('Agg')  # Use a non-interactive backend
-from matplotlib import pyplot as plt
 
+from matplotlib import pyplot as plt
 from utils.config import CFG
 from utils.config_setup import Config
+from run import data_storage
 from run import run_1
+from run import plot_results
 
 
 def generate_er_rates_grid(varying_indices, fixed_er_rates, start=0.1, stop=0.9, steps=9):
@@ -116,11 +118,7 @@ def run_all(prot_type=None):
         cfg.param.prot_type = prot_type
         cfg.param.results_filename = f"{cfg.param.results_filename_base}/{cfg.param.prot_type}"
 
-    # Save the basic configuration to a JSON file
-    with open('config.json', 'w') as json_file:
-        json.dump(CFG, json_file, indent=4)
-
-    # Initialize: #####################################################################################
+    # Initialize: ###########################################################################################
     new_folder = os.path.join(cfg.param.results_folder, cfg.param.results_filename)
     if os.path.exists(new_folder):
         print("ERROR: NEW FOLDER NAME ALREADY EXISTS. CHANGE DIRECTORY TO AVOID OVERWRITE TRAINED MODEL")
@@ -132,13 +130,18 @@ def run_all(prot_type=None):
     if cfg.param.er_estimate_type == "genie":
         cfg.param.er_load = "from_csv"
         print("WARNING: CHANGING ER_LOAD TO from_csv FOR GENIE ESTIMATION")
-    #########################################################################################################
+
+    ##########################################################################################################
+
+    config_path = os.path.join(cfg.param.results_folder, cfg.param.results_filename_base, 'config.txt')
+    with open(config_path, 'a') as text_file:
+        json.dump(CFG, text_file, indent=4)
 
     print(f"Running {cfg.param.prot_type} protocol")
     with open(os.path.join(new_folder, f"metrics.txt"), "a") as f:
         f.write(f"Running {cfg.param.prot_type} protocol\n")
 
-    # Load Parameters: ######################################################################################
+    # Load Parameters: ########################################################################################
     rep = cfg.param.rep
     rtt_list = cfg.param.rtt
     er_var_values = cfg.param.er_var_values
@@ -153,7 +156,7 @@ def run_all(prot_type=None):
     er_rates_grid = generate_er_rates_grid(varying_indices, all_er_rates, start=start, stop=stop, steps=steps)
     ############################################################################################################
 
-    # Run the simulations: #########################################################################################
+    # Run the simulations: #####################################################################################
     all_df = pd.DataFrame()
     for rtt_idx, rtt in enumerate(rtt_list):
         cfg.param.rtt = rtt  # Update the RTT value for the current run
@@ -166,30 +169,42 @@ def run_all(prot_type=None):
 
             # Run all repetitions:
             all_r_list = []
+            cfg.param.data_storage = data_storage.DataStorage()
             for r in range(rep):
                 cfg.run_index.rep_index = r  # Update the repetition number for the current run
+                # cfg.run_index.ber_process = generate_ber_events(rate=1-max(cfg.param.er_rates), T=cfg.param.T)
+
+                if cfg.param.in_type == "ber":
+                    # ber_events = os.path.join(cfg.param.project_folder, "Data", f"upsample",
+                    #                                  f"series_{r+1}.txt")
+
+                    ber_events = os.path.join(cfg.param.project_folder, "Data", f"ber_series_less",
+                                              f"rate_{np.round(1 - max(cfg.param.er_rates), 2)}", f"series_{r + 1}.txt")
+
+                    # max(cfg.param.er_rates)
+
+                    cfg.run_index.ber_process = np.array(np.loadtxt(ber_events, dtype=int))
+
+                    print(f"in rate: {np.mean(cfg.run_index.ber_process)}")
+                    with open(os.path.join(new_folder, f"metrics.txt"), "a") as f:
+                        f.write(f"in rate: {np.mean(cfg.run_index.ber_process)}\n")
 
                 print(f"--- RTT={int(rtt)}, er_rates={er_rates}, Repetition {r + 1} ---")
                 with open(os.path.join(new_folder, f"metrics.txt"), "a") as f:
                     f.write(f"--- RTT={int(rtt)}, er_rates={er_rates}, Repetition {r + 1} ---\n")
 
-                # # Read Data From A File #################################################################
-                # # When reading data from a file, determine the relevant path using {r}.
-                # # Later: AAA=Channel index and BBB=eps_hist.
-                # cfg.param.er_series_path = f"{cfg.param.project_folder}" /
-                #                            f"/Data/{cfg.param.er_type}/AAA/" /
-                #                            f"erasure_series_eps_BBB_series_{r}.csv"
-                # ########################################################################################
-
                 # Run one repetition and log results ###################################################
                 df_list = run_1.run_1(cfg, rtt, er_rates, new_folder)
 
-                if df_list is None:  # Skip the repetition if it failed - e.g. nothing decoded.
+                # Skip the repetition if it failed - e.g. nothing decoded.
+                if df_list is None:
                     continue
 
+                # Save the results for the current repetition
+                cfg.param.data_storage.save_to_files(os.path.join(new_folder, f"RTT={rtt}_ER_I={er_idx}"))
                 all_r_list.append(df_list)
-                shutil.copy("ff_log.txt", os.path.join(cfg.param.results_folder, cfg.param.results_filename,
-                                                       f"RTT={rtt}_ER_I={er_idx}_r={r}_ff_log.txt"))
+                shutil.copy("ff_log.txt", os.path.join(new_folder,
+                                                       f"RTT={rtt}_ER_I={er_idx}", f"ff_log_r={r}.txt"))
                 ########################################################################################
 
             # Concatenate all DataFrames row-wise for each index across the sublists
@@ -202,7 +217,7 @@ def run_all(prot_type=None):
             all_df = pd.concat([all_df, new_df], ignore_index=True)
             # Save to results folder:
             file_path = os.path.join(cfg.param.results_folder, cfg.param.results_filename,
-                                     f"RTT={rtt}_ER_I={er_idx}_r={r}_all_df.csv")
+                                     f"RTT={rtt}_ER_I={er_idx}_all_df.csv")
             all_df.to_csv(file_path, index=False)
 
         # Save the results for the current RTT value
@@ -302,7 +317,7 @@ def print_1_metric(df1, node_value=-1):
     ######################################################################################################
 
 
-def print_metrics_for_all_dfs(dfs, labels, er_rates, node_value=None, filename=None):
+def print_metrics_for_all_dfs(dfs, labels, er_rates, node_value=None, filename=None, type_mid='Real'):
     """
     Plot metrics for any number of DataFrames with labels.
 
@@ -317,9 +332,6 @@ def print_metrics_for_all_dfs(dfs, labels, er_rates, node_value=None, filename=N
         raise ValueError("At least one DataFrame is required.")
     if len(dfs) != len(labels):
         raise ValueError("The number of DataFrames must match the number of labels.")
-
-    # List of columns to plot
-    metrics = ['Normalized Goodput', 'Delivery Rate', 'Channel Usage Rate', 'Mean Delay', 'Max Delay']
 
     # Prepare data: Calculate means and filter for the selected Node
     dfs_mean = []
@@ -339,11 +351,24 @@ def print_metrics_for_all_dfs(dfs, labels, er_rates, node_value=None, filename=N
 
     for n in node_value:  # Plot for each node
 
+        if n == -1:
+            metrics_to_plot = ['Normalized Goodput', 'Delivery Rate', 'Channel Usage Rate', 'Mean Delay', 'Max Delay']
+        else:
+            if type_mid == 'Real':
+                metrics_to_plot = ['Normalized Goodput Real', 'Delivery Rate Real', 'Channel Usage Rate Real',
+                                   'Mean Real Delay', 'Max Real Delay']
+
+            else:  # semi decoding
+                metrics_to_plot = ['Normalized Goodput', 'Delivery Rate', 'Channel Usage Rate', 'Mean Delay',
+                                   'Max Delay']
+
         dfs_mean_node = [df[df['Node'] == n] for df in dfs_mean]
 
-        fig, axes = plt.subplots(1, len(metrics), figsize=(5 * len(metrics), 6), sharex=True, sharey=False)
+        fig, axes = plt.subplots(1, len(metrics_to_plot), figsize=(5 * len(metrics_to_plot), 6), sharex=True,
+                                 sharey=False)
 
-        for i, column in enumerate(metrics):
+        for i, column in enumerate(metrics_to_plot):
+
             for j, (df_node, label) in enumerate(zip(dfs_mean_node, labels)):
                 axes[i].plot(df_node['Eps'], df_node[column], label=f'{label}', linestyle='-', alpha=0.7)
 
@@ -360,10 +385,22 @@ def print_metrics_for_all_dfs(dfs, labels, er_rates, node_value=None, filename=N
             # Set y-axis limits based on the column
             if column in ['Normalized Goodput', 'Delivery Rate', 'Channel Usage Rate']:
                 axes[i].set_ylim(0, 1.01)
+
+            if column in ['Mean Real Delay']:
+                axes[i].set_ylim(0, 200, 50)
+            if column in ['Max Real Delay']:
+                axes[i].set_ylim(0, 400, 50)
+            if column in ['Delivery Rate Real']:
+                axes[i].set_ylim(0, 1.01)
+            if column in ['Normalized Goodput Real']:
+                axes[i].set_ylim(0, 1.01)
+            if column in ['Channel Usage Rate Real']:
+                axes[i].set_ylim(0, 1.01)
+
             # if column in ['Mean Delay']:
-            #     axes[i].set_ylim(300, 800)
+            #     axes[i].set_ylim(0, 400, 100)
             # if column in ['Max Delay']:
-            #     axes[i].set_ylim(600, 1200)
+            #     axes[i].set_ylim(0, 400, 100)
 
             axes[i].grid(True)
             axes[i].legend()
@@ -374,9 +411,214 @@ def print_metrics_for_all_dfs(dfs, labels, er_rates, node_value=None, filename=N
         # plt.show()
 
         # Save figure:
-        plt.savefig(f'{filename}/Node_{n}_metrics_vs_eps.png')  # , dpi=300)
+        # plt.savefig(f'{filename}/Node_{n}_metrics_vs_eps.png')  # , dpi=300)
+        plt.savefig(os.path.join(filename, f"Node_{n}_metrics_vs_eps.png"))
 
     return
+
+
+def print_metrics_paper(dfs, labels, er_rates, node_value=None, filename=None):
+    """
+    Plot metrics for any number of DataFrames with labels, generating separate figures for each metric.
+
+    Parameters:
+    dfs (list of pd.DataFrame): List of DataFrames to plot metrics from.
+    labels (list of str): List of labels corresponding to each DataFrame.
+    er_rates (list of float): Error rates for calculating capacity.
+    node_value (int): Node value to filter data. If None, include all nodes.
+    filename (str): Directory to save figures.
+    """
+
+    # Validate input
+    if len(dfs) < 1:
+        raise ValueError("At least one DataFrame is required.")
+    if len(dfs) != len(labels):
+        raise ValueError("The number of DataFrames must match the number of labels.")
+
+    # Prepare data: Calculate means and filter for the selected Node
+    dfs_mean = [df.groupby(['Node', 'Eps']).mean().reset_index() for df in dfs]
+
+    if node_value is None:
+        node_value = dfs_mean[0]['Node'].unique()
+    else:
+        node_value = [node_value]
+
+    # Add plot of the capacity:
+    all_eps = dfs[0]['Eps'].unique()
+    eps_bn_fixed = max(er_rates)
+    eps_bn_changed = np.array([max(eps_bn_fixed, eps) for eps in all_eps])
+    capacity = 1 - eps_bn_changed
+
+    for n in node_value:  # Plot for each node
+
+        # Filter to only 'Channel Usage Rate' when node_value != -1
+        if n == -1:
+            metrics_to_plot = ['Normalized Goodput', 'Delivery Rate', 'Channel Usage Rate', 'Mean Delay', 'Max Delay']
+        else:
+            metrics_to_plot = ['Channel Usage Rate']
+
+        dfs_mean_node = [df[df['Node'] == n] for df in dfs_mean]
+
+        for column in metrics_to_plot:
+            # Create a separate figure for each metric
+            plt.figure(figsize=(8, 6))
+
+            for df_node, label in zip(dfs_mean_node, labels):
+                plt.plot(df_node['Eps'], df_node[column], label=f'{label}', linestyle='-', alpha=0.7, linewidth=2)
+
+            plt.xlabel('Epsilon', fontsize=14)
+            # plt.ylabel(column, fontsize=14)
+
+            # if n == -1:
+            # plt.title(f'{column}', fontsize=16)\
+            # if n != -1:
+            #     plt.title(f'{column} - Channel {n-1}', fontsize=16)
+
+            # Add capacity line for Delivery Rate
+            if n == -1 and column == 'Delivery Rate':
+                plt.plot(all_eps, capacity, label='Capacity', linestyle='--', color='black', linewidth=2)
+
+            # Set y-axis limits for specific metrics
+            if column in ['Normalized Goodput', 'Delivery Rate', 'Channel Usage Rate']:
+                plt.ylim(0, 1.01)
+
+            # Set x-axis limits to match epsilon limits
+            plt.xlim(min(all_eps), max(all_eps))
+
+            plt.grid(True, linestyle='--', alpha=0.7)
+            plt.legend(fontsize=12)
+            plt.tight_layout()
+
+            # Save figure for the current metric
+            if filename:
+                # plt.savefig(f'{filename}/Node_{n}_{column.replace(" ", "_")}_vs_eps.png', dpi=300)
+                plt.savefig(os.path.join(filename, "Channel_Usage_Rate_All_vs_eps.png"), dpi=300)
+
+    # def print_metrics_separate(dfs, labels, er_rates, node_value=None, filename=None):
+    # """
+    # Plot metrics for any number of DataFrames with labels, generating separate figures for each metric.
+    # Also creates a combined plot for Channel Usage Rate for all n != -1.
+    #
+    # Parameters:
+    # dfs (list of pd.DataFrame): List of DataFrames to plot metrics from.
+    # labels (list of str): List of labels corresponding to each DataFrame.
+    # er_rates (list of float): Error rates for calculating capacity.
+    # node_value (int): Node value to filter data. If None, include all nodes.
+    # filename (str): Directory to save figures.
+    # """
+    #
+    # # Validate input
+    # if len(dfs) < 1:
+    #     raise ValueError("At least one DataFrame is required.")
+    # if len(dfs) != len(labels):
+    #     raise ValueError("The number of DataFrames must match the number of labels.")
+    #
+    # # Prepare data: Calculate means and filter for the selected Node
+    # dfs_mean = [df.groupby(['Node', 'Eps']).mean().reset_index() for df in dfs]
+    #
+    # custom_colors = ['#00A2E8', '#D10056', '#C4A000', '#000000',
+    #                  '#1D3557', '#006400', '#FF6347',
+    #                  '#20B2AA']
+    #
+    # # Add plot of the capacity:
+    # all_eps = dfs[0]['Eps'].unique()
+    # eps_bn_fixed = max(er_rates)
+    # eps_bn_changed = np.array([max(eps_bn_fixed, eps) for eps in all_eps])
+    # capacity = 1 - eps_bn_changed
+    #
+    # if node_value is None:
+    #     node_value = dfs_mean[0]['Node'].unique()
+    #
+    #     # Combined plot for all n != -1 (Channel Usage Rate)
+    #     non_minus_one_nodes = [n for n in dfs_mean[0]['Node'].unique() if n != -1]
+    #     plt.figure(figsize=(10, 8))
+    #
+    #     for idx, n in enumerate(non_minus_one_nodes):
+    #         color = custom_colors[idx % len(custom_colors)]
+    #         dfs_mean_node = [df[df['Node'] == n] for df in dfs_mean]
+    #         for df_node, label in zip(dfs_mean_node, labels):
+    #
+    #             if label == "BS-EMPTY":
+    #                 plt_label = 'BS-ACRLNC'
+    #             elif label == "AC-FEC":
+    #                 plt_label = 'Local-ACRLNC'
+    #             elif label == "MIXALL":
+    #                 plt_label = 'Baseline'
+    #             else:
+    #                 plt_label = label
+    #
+    #             plt.plot(df_node['Eps'], df_node['Channel Usage Rate'],
+    #                      label=f'{plt_label} - Channel {n - 1}', linestyle='-', alpha=0.7, linewidth=2, color=color)
+    #
+    #     plt.xlabel('Epsilon', fontsize=14)
+    #     # plt.ylabel('Channel Usage Rate', fontsize=14)
+    #     plt.ylim(0, 1.01)
+    #     plt.xlim(min(all_eps), max(all_eps))
+    #     plt.grid(True, linestyle='--', alpha=0.7)
+    #     plt.legend(fontsize=12)
+    #     plt.tight_layout()
+    #
+    #     # Save figure if filename is provided
+    #     if filename:
+    #         plt.savefig(f'{filename}/Channel_Usage_Rate_All_vs_eps.png', dpi=300)
+    #
+    # else:
+    #     node_value = [node_value]
+    #     # Separate plots for each metric and node
+    #     for n in node_value:  # Plot for each node
+    #         # Filter to only 'Channel Usage Rate' when node_value != -1
+    #         if n == -1:
+    #             metrics_to_plot = ['Normalized Goodput', 'Delivery Rate', 'Channel Usage Rate', 'Mean Delay',
+    #                                'Max Delay']
+    #         else:
+    #             metrics_to_plot = ['Channel Usage Rate']
+    #
+    #         dfs_mean_node = [df[df['Node'] == n] for df in dfs_mean]
+    #
+    #         for column in metrics_to_plot:
+    #             # Create a separate figure for each metric
+    #             plt.figure(figsize=(8, 6))
+    #
+    #             for df_node, label in zip(dfs_mean_node, labels):
+    #
+    #                 if label == "BS-EMPTY":
+    #                     plt_label = 'BS-ACRLNC'
+    #                     color = custom_colors[-1]
+    #                 elif label == "AC-FEC":
+    #                     plt_label = 'Local-ACRLN'
+    #                     color = custom_colors[-2]
+    #                 elif label == "MIXALL":
+    #                     plt_label = 'Baseline'
+    #                     color = custom_colors[-3]
+    #                 else:
+    #                     plt_label = label
+    #                     color = custom_colors[-4]
+    #
+    #                 plt.plot(df_node['Eps'], df_node[column], label=f'{plt_label}', linestyle='-', alpha=0.7,
+    #                          linewidth=2, color=color)
+    #
+    #             plt.xlabel('Epsilon', fontsize=14)
+    #             # plt.ylabel(column, fontsize=14)
+    #
+    #             # Add capacity line for Delivery Rate
+    #             if n == -1 and column == 'Delivery Rate':
+    #                 plt.plot(all_eps, capacity, label='Capacity', linestyle='--', color='black', linewidth=2)
+    #
+    #             # Set y-axis limits for specific metrics
+    #             if column in ['Normalized Goodput', 'Delivery Rate', 'Channel Usage Rate']:
+    #                 plt.ylim(0, 1.01)
+    #
+    #             # Set x-axis limits to match epsilon limits
+    #             plt.xlim(min(all_eps), max(all_eps))
+    #
+    #             plt.grid(True, linestyle='--', alpha=0.7)
+    #             plt.legend(fontsize=12)
+    #             plt.tight_layout()
+    #
+    #             # Save figure for the current metric
+    #             if filename:
+    #                 # plt.savefig(f'{filename}/Node_{n}_{column.replace(" ", "_")}_vs_eps.png', dpi=300)
+    #                 plt.savefig(os.path.join(filename, f"Node_{n}_{column.replace(' ', '_')}_vs_eps.png"), dpi=300)
 
 
 def load_and_plot(dfs_names, node_value=None):
@@ -392,42 +634,41 @@ def load_and_plot(dfs_names, node_value=None):
 
     df_list = []
     for df_name in dfs_names:
-        df = pd.read_csv(f'{filename}/{df_name}/all_df_rtt_{cfg.param.rtt[0]}.csv')
+        # df = pd.read_csv(f'{filename}/{df_name}/all_df_rtt_{cfg.param.rtt[0]}.csv')
+        path = os.path.join(filename, df_name, f"all_df_rtt_{cfg.param.rtt[0]}.csv")
+        df = pd.read_csv(path)
         df_list.append(df)
 
-    print_metrics_for_all_dfs(dfs=df_list, labels=dfs_names, er_rates=er_rates, filename=filename,
-                              node_value=node_value)
+    # print_metrics_for_all_dfs(dfs=df_list, labels=dfs_names, er_rates=er_rates, filename=filename, node_value=node_value)
+    plot_results.print_for_paper(cfg=cfg, dfs=df_list, labels=dfs_names, er_rates=er_rates, filename=filename,
+                                 node_value=node_value)
+    plot_results.print_for_arxiv(cfg=cfg, dfs=df_list, labels=dfs_names, er_rates=er_rates, filename=filename,
+                                 node_value=node_value)
 
 
 def main_run():
-    df_mixall = run_all(prot_type="MIXALL")
+    # Choose one option by comment\uncomment
 
-    df_ac_fec = run_all(prot_type="AC-FEC")
+    ###### 1. Run and Plot  ######
+    labels = ['MIXALL', 'BS-EMPTY']  # Options: 'MIXALL', 'AC-FEC', 'BS-EMPTY', 'AC-EMPTY', 'BS-FEC'
 
-    df_bs_empty = run_all(prot_type="BS-EMPTY")
+    # Run:
+    all_df = []
+    for label in labels:
+        df = run_all(prot_type=label)
+        all_df.append(df)
 
-    df_bs_fec = run_all(prot_type="BS-FEC")
-
-    df_ac_empty = run_all(prot_type="AC-EMPTY")
-
+    # Plot:
     cfg = Config.from_json(CFG)
     filename = os.path.join(cfg.param.results_folder, cfg.param.results_filename_base)
-
-    print_metrics_for_all_dfs(dfs=[df_ac_fec, df_ac_empty, df_bs_fec, df_bs_empty],
-                              labels=['AC-FEC', 'AC-EMPTY', 'BS-FEC', 'BS-EMPTY'],
+    print_metrics_for_all_dfs(dfs=all_df,
+                              labels=labels,
                               er_rates=cfg.param.er_rates,
                               filename=filename)
 
-    print_metrics_for_all_dfs(dfs=[df_ac_fec, df_ac_empty, df_bs_fec, df_bs_empty, df_mixall],
-                              labels=['AC-FEC', 'AC-EMPTY', 'BS-FEC', 'BS-EMPTY', 'MIXALL'],
-                              er_rates=cfg.param.er_rates,
-                              filename=filename, node_value=-1)
-
-    # dfs_names = ['AC-FEC', 'AC-EMPTY', 'BS-FEC', 'BS-EMPTY']
-    # load_and_plot(dfs_names)
-    # dfs_names = ['AC-FEC', 'AC-EMPTY', 'BS-FEC', 'BS-EMPTY', 'MIXALL']
+    ###### 2. Load and Plot For Paper  ######
+    # dfs_names = ['MIXALL', 'AC-FEC', 'BS-EMPTY']  # Only for these options.
     # load_and_plot(dfs_names, node_value=-1)
-
 
 if __name__ == '__main__':
     main_run()

@@ -12,10 +12,11 @@ from ns.port.airinterface import AirInterface
 from ns.port.nc_node import NC_node
 from ns.port.termination_node import Termination_node
 
+
 class RunLog:
 
     def __init__(self):
-        self.N = None # number of nodes
+        self.N = None  # number of nodes
         self.n = None  # node's inedx
 
         self.arrival_times = None  # arrival times - the time packet i (nc_id from last node!) arrives at the current node.
@@ -35,33 +36,61 @@ class RunLog:
         self.empty_buffer_num = None
         self.empty_bls_num = None
 
-    def load_data(self, N, n, new_folder):
+    # def load_data(self, N, n, new_folder):
+    #     self.N = N
+    #     self.n = n
+
+    #     self.arrival_times = np.load(f"{new_folder}/arrival_times_ch={n}.npy")
+    #     self.semi_dec_times = np.load(f"{new_folder}/semi_dec_times_ch={n}.npy")
+    #     self.last_semi_dec = self.semi_dec_times.shape[0]
+    #     self.epsilons = np.load(f"{new_folder}/eps_mean_ch={n}.npy")
+
+    #     if n < N-1:  # if not the last node
+    #         self.erasures = np.load(f"{new_folder}/erasures_ch={n+1}.npy")  # from the next node.
+    #         self.trans_times = np.load(f"{new_folder}/trans_times_ch={n}.npy")
+    #         self.trans_types = np.load(f"{new_folder}/trans_types_ch={n}.npy")
+
+    #     # if n == N-1:  # if the last node
+    #     self.dec_times = np.load(f"{new_folder}/dec_times_ch={n}.npy")
+    #     self.last_dec = self.dec_times.shape[0]
+
+    def load_data(self, N, n, cfg):
         self.N = N
         self.n = n
+        r = cfg.run_index.rep_index
+        key = (r, n)
 
-        self.arrival_times = np.load(f"{new_folder}/arrival_times_ch={n}.npy")
-        self.semi_dec_times = np.load(f"{new_folder}/semi_dec_times_ch={n}.npy")
+        data = cfg.param.data_storage.data[key]
+
+        self.arrival_times = data['arrival_times']
+        self.semi_dec_times = data['semi_dec_times']
         self.last_semi_dec = self.semi_dec_times.shape[0]
-        self.epsilons = np.load(f"{new_folder}/eps_mean_ch={n}.npy")
+        self.epsilons = data['eps_mean_hist']
 
-        if n < N-1:  # if not the last node
-            self.erasures = np.load(f"{new_folder}/erasures_ch={n+1}.npy")  # from the next node.
-            self.trans_times = np.load(f"{new_folder}/trans_times_ch={n}.npy")
-            self.trans_types = np.load(f"{new_folder}/trans_types_ch={n}.npy")
+        if n < N - 1:  # if not the last node
+            self.erasures = data['hist_erasures']
+            self.trans_times = data['trans_times']
+            self.trans_types = data['ct_type_hist']
 
-        if n == N-1:  # if the last node
-            self.dec_times = np.load(f"{new_folder}/dec_times.npy")
-            self.last_dec = self.dec_times.shape[0]
+        self.dec_times = data['dec_times']
+        self.last_dec = self.dec_times.shape[0]
 
     def set_types(self):
         ct_type_hist = self.trans_types
 
-        self.new_num = sum(ct_type_hist == 'NEW')
-        self.fbf_num = sum(ct_type_hist == 'FB-FEC')
-        self.fec_num = sum(ct_type_hist == 'FEC')
-        self.eow_num = sum(ct_type_hist == 'EOW')
-        self.empty_buffer_num = sum(ct_type_hist == 'EMPTY_BUFFER')
-        self.empty_bls_num = sum(ct_type_hist == 'EMPTY-BLS')
+        # self.new_num = sum(ct_type_hist == 'NEW')
+        # self.fbf_num = sum(ct_type_hist == 'FB-FEC')
+        # self.fec_num = sum(ct_type_hist == 'FEC')
+        # self.eow_num = sum(ct_type_hist == 'EOW')
+        # self.empty_buffer_num = sum(ct_type_hist == 'EMPTY_BUFFER')
+        # self.empty_bls_num = sum(ct_type_hist == 'EMPTY-BLS')
+
+        self.new_num = sum(1 for x in ct_type_hist if x == 'NEW')
+        self.fbf_num = sum(1 for x in ct_type_hist if x == 'FB-FEC')
+        self.fec_num = sum(1 for x in ct_type_hist if x == 'FEC')
+        self.eow_num = sum(1 for x in ct_type_hist if x == 'EOW')
+        self.empty_buffer_num = sum(1 for x in ct_type_hist if x == 'EMPTY_BUFFER')
+        self.empty_bls_num = sum(1 for x in ct_type_hist if x == 'EMPTY-BLS')
 
     def print_trans_log(self, T, rtt):
         all_fec = self.fbf_num + self.fec_num + self.eow_num
@@ -87,13 +116,13 @@ class RunLog:
         erasures_num = np.sum(1 - erasures_hist)
         print(f"Channel {self.n}: erasures num: {erasures_num}\n")
 
-def create_network_and_run(cfg, rtt, er_rates):
 
+def create_network_and_run(cfg, rtt, er_rates):
     ### 1. Read Params:
     env = simpy.Environment()
     T = cfg.param.T
     er_load = cfg.param.er_load
-    num_of_nodes = len(cfg.param.er_rates)+1
+    num_of_nodes = len(cfg.param.er_rates) + 1
     default_params = set_sim_params.get_node_default_params()
     default_params['en_enc']['debug'] = cfg.param.debug  # choose what to display from debug
 
@@ -112,7 +141,8 @@ def create_network_and_run(cfg, rtt, er_rates):
 
         if er_load == 'erasure':
             ff_channels.append(
-                AirInterface(env, delay_dist=rtt / 2, noise_dict=set_sim_params.noise_param('erasure', [eps]), wire_id=curr_ch,
+                AirInterface(env, delay_dist=rtt / 2, noise_dict=set_sim_params.noise_param('erasure', [eps]),
+                             wire_id=curr_ch,
                              debug=False))
 
         elif er_load == 'from_csv':
@@ -120,13 +150,22 @@ def create_network_and_run(cfg, rtt, er_rates):
             # Read Data From A File #################################################################
             er_type = 'BEC'
             channel_name = "erasure"
-            if "GE" in cfg.param.er_type and curr_ch == cfg.param.ge_channel:
+            if "GE" in cfg.param.er_type and curr_ch in cfg.param.ge_channel:
                 er_type = cfg.param.er_type
                 channel_name = "GE"
 
-            cfg.param.er_series_path = f"{cfg.param.project_folder}" \
-                                       f"/Data/{er_type}/ch_{curr_ch}/" \
-                                       f"{channel_name}_series_eps_{eps:.2f}_series_{cfg.run_index.rep_index}.csv"
+            # cfg.param.er_series_path = f"{cfg.param.project_folder}" \
+            #                            f"/Data/{er_type}/ch_{curr_ch}/" \
+            #                            f"{channel_name}_series_eps_{eps:.2f}_series_{cfg.run_index.rep_index}.csv"
+
+            cfg.param.er_series_path = os.path.join(
+                cfg.param.project_folder,
+                "Data",
+                er_type,
+                f"ch_{curr_ch}",
+                f"{channel_name}_series_eps_{eps:.2f}_series_{cfg.run_index.rep_index}.csv"
+            )
+
             path = cfg.param.er_series_path
             ########################################################################################
 
@@ -135,16 +174,27 @@ def create_network_and_run(cfg, rtt, er_rates):
             # path = path.replace('BBB', f'{eps:.2f}')
 
             ff_channels.append(
-                AirInterface(env, delay_dist=rtt / 2, noise_dict=set_sim_params.noise_param(er_load, eps, path), wire_id=curr_ch,
+                AirInterface(env, delay_dist=rtt / 2, noise_dict=set_sim_params.noise_param(er_load, eps, path),
+                             wire_id=curr_ch,
                              debug=False))
 
+        elif er_load == 'from_mat':
+            path = os.path.join(cfg.param.model_path, f"scenario_{cfg.para.spped}",
+                                f"ch_{curr_ch}.mat")
+
+            ff_channels.append(env, delay_dist=rtt / 2, noise_dict=set_sim_params.noise_param(er_load, path),
+                               wire_id=curr_ch, debug=False)
+
         fb_channels.append(
-            AirInterface(env, delay_dist=rtt / 2, noise_dict=set_sim_params.noise_param('delay_only'), wire_id=curr_ch, debug=False))
+            AirInterface(env, delay_dist=rtt / 2, noise_dict=set_sim_params.noise_param('delay_only'), wire_id=curr_ch,
+                         debug=False))
 
     # 2.3 Terminations
-    source_term = Termination_node(env, node_type='source', arrival=set_sim_params.constArrival, pct_size=set_sim_params.constPacketSize,
+    source_term = Termination_node(env, node_type='source', arrival=set_sim_params.constArrival,
+                                   pct_size=set_sim_params.constPacketSize,
                                    pct_debug=False, sink_debug=False)
-    dest_term = Termination_node(env, node_type='destination', arrival=set_sim_params.constArrival, pct_size=set_sim_params.constPacketSize,
+    dest_term = Termination_node(env, node_type='destination', arrival=set_sim_params.constArrival,
+                                 pct_size=set_sim_params.constPacketSize,
                                  pct_debug=False, sink_debug=False)
 
     # 2.4 Connect nodes and channels:
@@ -168,7 +218,7 @@ def create_network_and_run(cfg, rtt, er_rates):
     # log_df = pd.DataFrame(columns=[f'node{i} -> node{i+1}'.ljust(col_space) for i in range(num_of_nodes)])
 
     # Generate column names
-    columns = ["SRC"] + [f'node{i} -> node{i + 1}' for i in range(num_of_nodes-1)]
+    columns = ["SRC"] + [f'node{i} -> node{i + 1}' for i in range(num_of_nodes - 1)]
     # Create the DataFrame
     columns = [col.ljust(col_space) for col in columns]
     log_df = pd.DataFrame(columns=columns)
@@ -192,6 +242,7 @@ def create_network_and_run(cfg, rtt, er_rates):
 
     # Save locally:
     log_df.to_csv('ff_log.txt', sep='\t')
+
 
 def run_1(cfg, rtt, er_rates, new_folder):
     # Run Simulation #########################################
@@ -218,7 +269,7 @@ def run_1(cfg, rtt, er_rates, new_folder):
     run_log_results = []
     for n in range(N):
 
-        run_log[n].load_data(N, n, new_folder)
+        run_log[n].load_data(N, n, cfg)
 
         if n < N - 1:
             run_log[n].set_types()
@@ -229,23 +280,29 @@ def run_1(cfg, rtt, er_rates, new_folder):
             # From current node:
             semi_dec_times = run_log[n].semi_dec_times
             last_semi_dec = run_log[n].last_semi_dec
+
             # From previous node:
-            arrival_times = run_log[n-1].arrival_times
-            all_empty = run_log[n-1].empty_buffer_num + run_log[n-1].empty_bls_num
+            arrival_times = run_log[n - 1].arrival_times
+            all_empty = run_log[n - 1].empty_buffer_num + run_log[n - 1].empty_bls_num
 
             # Calculate metrics:
             norm_goodput = last_semi_dec / (T - int(rtt / 2) * n - all_empty)
+
             period_len = 100
             num_periods = int(T / period_len)
             decoded_counts, _ = np.histogram(semi_dec_times, bins=np.linspace(0, T, num_periods + 1))
             bw = np.mean(decoded_counts) / period_len
+
             ch_use_rate = 1 - all_empty / (T - int(rtt / 2) * n)
+
+            ### Semi Delay:  (compare to *arrival* times of the previous node)
             # print(f"last semi dec:{last_semi_dec}, arrival times:{len(arrival_times)}")
             delay = semi_dec_times - arrival_times[:last_semi_dec]
             mean_delay = np.mean(delay)
             max_delay = np.max(delay)
 
-            trans_times = run_log[n-1].trans_times
+            ### Semi NC Delay: (compare to *trans* times of the previous node)
+            trans_times = run_log[n - 1].trans_times
             # print(f"last semi dec:{last_semi_dec}, arrival times:{len(trans_times)}")
             # if last_semi_dec < len(trans_times):
             #     print("Good")
@@ -254,6 +311,29 @@ def run_1(cfg, rtt, er_rates, new_folder):
             nc_delay_semi = semi_dec_times - trans_times[:last_semi_dec]
             mean_nc_delay_semi = np.mean(nc_delay_semi)
             max_nc_delay_semi = np.max(nc_delay_semi)
+
+            ### Real Delay: (compare to arrival times of the source)
+            N_real = n + 1
+            real_dec_times = run_log[n].dec_times
+            last_real_dec = run_log[n].last_dec
+            # Delay
+            real_delay = real_dec_times - run_log[0].arrival_times[:last_real_dec]
+            mean_real_delay = np.mean(real_delay)
+            max_real_delay = np.max(real_delay)
+            # Goodput:
+            all_empty_source = run_log[0].empty_bls_num + run_log[0].empty_buffer_num
+            norm_goodput_real = last_real_dec / (T - int(rtt / 2) * (N_real - 1) - all_empty_source)
+            # Delivery Rate:
+            decoded_counts, _ = np.histogram(real_dec_times, bins=np.linspace(0, T, num_periods + 1))
+            dr_real = np.mean(decoded_counts) / period_len
+            # Channel Usage Rate:
+            all_empty = sum([run_log[i].empty_bls_num + run_log[i].empty_buffer_num for i in range(0, N_real - 1)])
+            ch_use_rate_real = 1 - all_empty / ((N_real - 1) * T - int(rtt / 2) * (N_real - 2) * (N_real - 1) / 2)
+
+            # Real delay placeholder:
+            # real_delay = np.nan
+            # mean_real_delay = np.nan
+            # max_real_delay = np.nan
 
             if cfg.param.print_flag:
                 print(f"Node {n}:")
@@ -264,6 +344,12 @@ def run_1(cfg, rtt, er_rates, new_folder):
                 print(f"Max Delay: {max_delay:.2f}")
                 print(f"Mean NC Delay: {mean_nc_delay_semi:.2f}")
                 print(f"Max NC Delay: {max_nc_delay_semi:.2f}\n")
+                print(f"-- Real --")
+                print(f"Normalized Goodput Real: {norm_goodput_real:.2f}")
+                print(f"Delivery Rate Real: {dr_real:.2f}")
+                print(f"Channel Usage Rate Real: {ch_use_rate_real:.2f}\n")
+                print(f"Mean Real Delay: {mean_real_delay:.2f}")
+                print(f"Max Real Delay: {max_real_delay:.2f}\n")
 
             with open(f"{new_folder}/metrics_nodes.txt", "a") as f:
                 f.write(f"Node {n}:\n")
@@ -274,6 +360,12 @@ def run_1(cfg, rtt, er_rates, new_folder):
                 f.write(f"Max Delay: {max_delay:.2f}\n")
                 f.write(f"Mean NC Delay: {mean_nc_delay_semi:.2f}\n")
                 f.write(f"Max NC Delay: {max_nc_delay_semi:.2f}\n\n")
+                f.write("-- Real --\n")
+                f.write(f"Normalized Goodput Real: {norm_goodput_real:.2f}\n")
+                f.write(f"Delivery Rate Real: {dr_real:.2f}\n")
+                f.write(f"Channel Usage Rate Real: {ch_use_rate_real:.2f}\n\n")
+                f.write(f"Mean Real Delay: {mean_real_delay:.2f}\n")
+                f.write(f"Max Real Delay: {max_real_delay:.2f}\n\n")
                 f.write("-----------------------------------\n\n")
 
             # Save results:
@@ -286,6 +378,11 @@ def run_1(cfg, rtt, er_rates, new_folder):
                 "Max Delay": max_delay,
                 "Mean NC Delay": mean_nc_delay_semi,
                 "Max NC Delay": max_nc_delay_semi,
+                "Normalized Goodput Real": norm_goodput_real,
+                "Delivery Rate Real": dr_real,
+                "Channel Usage Rate Real": ch_use_rate_real,
+                "Mean Real Delay": mean_real_delay,
+                "Max Real Delay": max_real_delay,
             }
             df = pd.DataFrame(dict, index=[0])
             run_log_results.append(df)
@@ -309,15 +406,15 @@ def run_1(cfg, rtt, er_rates, new_folder):
         f.write(f"mean window length: {np.mean(wins_len)}\n")
 
     all_empty_source = run_log[0].empty_bls_num + run_log[0].empty_buffer_num
-    norm_goodput = last_dec / (T - int(rtt/2) * (N-1) - all_empty_source)
+    norm_goodput = last_dec / (T - int(rtt / 2) * (N - 1) - all_empty_source)
 
     period_len = 100
     num_periods = int(T / period_len)
     decoded_counts, _ = np.histogram(dec_times, bins=np.linspace(0, T, num_periods + 1))
-    bw = np.mean(decoded_counts)/period_len
+    bw = np.mean(decoded_counts) / period_len
 
-    all_empty = sum([run_log[i].empty_bls_num + run_log[i].empty_buffer_num for i in range(0, N-1)])
-    ch_use_rate = 1 - all_empty / ((N-1)*T - int(rtt/2) * (N-2)*(N-1)/2)
+    all_empty = sum([run_log[i].empty_bls_num + run_log[i].empty_buffer_num for i in range(0, N - 1)])
+    ch_use_rate = 1 - all_empty / ((N - 1) * T - int(rtt / 2) * (N - 2) * (N - 1) / 2)
 
     arrival_times = run_log[0].arrival_times
     delay = dec_times - arrival_times[:last_dec]
@@ -328,6 +425,14 @@ def run_1(cfg, rtt, er_rates, new_folder):
     mean_nc_delay = np.mean(nc_delay)
     max_nc_delay = np.max(nc_delay)
 
+    # Real delay placeholder:
+    real_delay = np.nan
+    mean_real_delay = np.nan
+    max_real_delay = np.nan
+    norm_goodput_real = np.nan
+    dr_real = np.nan
+    ch_use_rate_real = np.nan
+
     print("---- Full System ----")
     print(f"Normalized Goodput: {norm_goodput:.2f}")
     print(f"Delivery Rate: {bw:.2f}")
@@ -336,10 +441,16 @@ def run_1(cfg, rtt, er_rates, new_folder):
     print(f"Max Delay: {max_delay:.2f}")
     print(f"Mean NC Delay: {mean_nc_delay:.2f}")
     print(f"Max NC Delay: {max_nc_delay:.2f}")
+    print(f"last dec: {last_dec}, bls_empty: {run_log[0].empty_bls_num}, buffer_empty: {run_log[0].empty_buffer_num}")
 
     # save print to file:
     with open(os.path.join(new_folder, f"metrics.txt"), "a") as f:
+
         f.write("---- Full System ----\n")
+
+        f.write(
+            f"last dec: {last_dec}, bls_empty: {run_log[0].empty_bls_num}, buffer_empty: {run_log[0].empty_buffer_num}\n")
+
         f.write(f"Normalized Goodput: {norm_goodput:.2f}\n")
         f.write(f"Delivery Rate: {bw:.2f}\n")
         f.write(f"Channel Usage Rate: {ch_use_rate:.2f}\n")
@@ -360,6 +471,11 @@ def run_1(cfg, rtt, er_rates, new_folder):
         "Max Delay": max_delay,
         "Mean NC Delay": mean_nc_delay,
         "Max NC Delay": max_nc_delay,
+        "Normalized Goodput Real": norm_goodput_real,
+        "Delivery Rate Real": dr_real,
+        "Channel Usage Rate Real": ch_use_rate_real,
+        "Mean Real Delay": mean_real_delay,
+        "Max Real Delay": max_real_delay,
     }
     df = pd.DataFrame(dict, index=[0])
     run_log_results.append(df)

@@ -5,7 +5,7 @@ or the number of packets). This implementation uses the simple tail-drop mechani
 import simpy
 from ns.port.fifo_store import FIFO_Store
 import random  # For debug only. Erase eventually
-from acrlnc_node.ac_node1 import ACRLNC_Node
+from acrlnc_node.ac_node import ACRLNC_Node
 from acrlnc_node.ac_node_mix_all import ACRLNC_Node_Mix_All
 import numpy as np
 
@@ -53,7 +53,6 @@ class NCEncoder:
             self.ac_node = ACRLNC_Node_Mix_All(env=env, cfg=cfg)
         ##############################################################
 
-
         # Typically, the following FIFO_stores are used in order to pass the current packet to the nc encoder
         # (so, for example, len = 0 or 1):
         self.store_fb = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
@@ -91,7 +90,7 @@ class NCEncoder:
     def run(self):
         """The generator function used in simulations."""
 
-        res_folder = r"{}\{}".format(self.cfg.param.results_folder, self.cfg.param.results_filename)
+        res_folder = r"{}/{}".format(self.cfg.param.results_folder, self.cfg.param.results_filename)
 
         while True:
 
@@ -135,14 +134,25 @@ class NCEncoder:
             ######ADINA########################################################################################
             if ff_packets.nc_header is not None:
 
-                print_file = r"{}\{}.txt".format(res_folder, self.element_id)
+                curr_ch = 0 if self.element_id == 'enc_node0' else int(
+                    ff_packets.src[-1]) + 1
+
+                print_file = r"{}/{}.txt".format(res_folder, self.element_id)
                 # print(f"---{str(self.element_id)}---")
 
                 # 1. Erasure Gate: False=erasure, True=reception
-                ff_recep_flag = False
-                curr_ch_state = ff_ch[-1] if isinstance(ff_ch, list) else ff_ch
-                if curr_ch_state or curr_ch_state is None:
-                    ff_recep_flag = True
+                if self.cfg.param.er_load != "from_mat":
+                    ff_recep_flag = False
+                    curr_ch_state = ff_ch[-1] if isinstance(ff_ch, list) else ff_ch
+                    if curr_ch_state or curr_ch_state is None:
+                        ff_recep_flag = True
+
+                else:
+                    ff_recep_flag = False
+                    th = self.cfg.param.th_vec[curr_ch]
+                    curr_ch_state = ff_ch[-1] if isinstance(ff_ch, list) else ff_ch  # This is SNR
+                    if curr_ch_state >= th or curr_ch_state is None:
+                        ff_recep_flag = curr_ch_state
 
                 # 2. Run the AC node
                 self.ac_node.print_file = print_file
@@ -161,39 +171,34 @@ class NCEncoder:
                 self.out_fb.nc_serial = out_fb[2]  # dec
 
                 # 4. log
-                # save ct type history:
-                curr_ch = 0 if self.element_id == 'enc_node0' else int(
-                    ff_packets.src[-1]) + 1
 
                 # tran_times in the Transmitter
-                # if self.element_id == 'enc_node0':  # the first node = Transmitter
                 tran_times = np.array(self.ac_node.send_times.fifo_items())
-                np.save(r"{}\trans_times_ch={}.npy".format(res_folder, curr_ch), tran_times)
 
                 # Arrival times in each node
                 arrival_times = np.array(self.ac_node.arrival_times.fifo_items())
-                np.save(r"{}\arrival_times_ch={}.npy".format(res_folder, curr_ch), arrival_times)
 
                 # Semi dec_time in each node
                 semi_dec_times = np.array(self.ac_node.semi_dec_times.fifo_items())
-                np.save(r"{}\semi_dec_times_ch={}.npy".format(res_folder, curr_ch), semi_dec_times)
 
                 # dec_time - in the receiver only
-                if fb_packets is not None and fb_packets.src == 'd_fb':  # the last node = Receiver
-                    dec_times = np.array(self.ac_node.dec_times.fifo_items())
-                    np.save(r"{}\dec_times.npy".format(res_folder), dec_times)
+                dec_times = np.array(self.ac_node.dec_times.fifo_items())
 
                 ct_type = self.ac_node.ct_type_hist
-                np.save(r"{}\trans_types_ch={}.npy".format(res_folder, curr_ch), ct_type)
 
                 # log erasure series:
                 erasure_ = 1 if ff_recep_flag else 0  # 0=erasure, 1=reception
                 self.hist_erasures.append(erasure_)
-                np.save(r"{}\erasures_ch={}.npy".format(res_folder, curr_ch), np.array(self.hist_erasures))
+                hist_erasures = np.array(self.hist_erasures)
 
                 # log epsilons:
-                eps_mean_hist = self.ac_node.eps_hist
-                np.save(r"{}\eps_mean_ch={}.npy".format(res_folder, curr_ch), np.array(eps_mean_hist))
+                eps_mean_hist = np.array(self.ac_node.eps_hist)
+
+                # Save data to the storage object
+                self.cfg.param.data_storage.save_data(
+                    self.cfg.run_index.rep_index, curr_ch,
+                    tran_times, arrival_times, semi_dec_times,
+                    dec_times, ct_type, hist_erasures, eps_mean_hist)
 
             ####################################################################################################
 

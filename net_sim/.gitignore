@@ -136,3 +136,5 @@ dmypy.json
 .idea/
 .DS_Store
 ./examples/ff_log
+/acrlnc_node/bls_eq_debug.py
+/acrlnc_node/poisson_debug.py

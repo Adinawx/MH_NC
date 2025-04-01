@@ -1,10 +1,10 @@
 from acrlnc_node.encoder_mix_all import Encoder
 from ns.port.fifo_store import FIFO_Store
-
+import copy
 import numpy as np
+
 np.random.seed(42)
 
-import copy
 
 class ACRLNC_Node_Mix_All():
 
@@ -23,9 +23,11 @@ class ACRLNC_Node_Mix_All():
 
         self.print_file = None
 
-        self.fb_buffer = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'),
+        capacity = float('inf')  # self.cfg.param.T
+
+        self.fb_buffer = FIFO_Store(env, capacity=capacity, memory_size=float('inf'),
                                     debug=False)  # Buffer of erasures, vector of size Memory.
-        self.pt_buffer = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'),
+        self.pt_buffer = FIFO_Store(env, capacity=capacity, memory_size=float('inf'),
                                     debug=False)  # Packet buffer, buffer of [p_t]
         self.in_pt = None  # Received ct from the sender, None = no ct, [p_start_ind, p_end_ind] = ct.
         self.out_ct = [None, None]  # [w_min, w_max] = ct to be sent to the receiver.
@@ -43,7 +45,7 @@ class ACRLNC_Node_Mix_All():
         # Encoder:
         self.enc = Encoder(cfg=cfg, env=env)
         self.eps_hist = []
-        self.trans_buffer = FIFO_Store(env, capacity=float('inf'),
+        self.trans_buffer = FIFO_Store(env, capacity=capacity,
                                        memory_size=float('inf'))  # Buffer of source packets in the transmitter
 
         # Decoder:
@@ -52,16 +54,16 @@ class ACRLNC_Node_Mix_All():
         self.last_dec_id = -1  # Last decoded packet.
 
         # Receiver:
-        self.rece_buffer = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'),
+        self.rece_buffer = FIFO_Store(env, capacity=capacity, memory_size=float('inf'),
                                       debug=False)  # Buffer of received packets.
 
         # First time to send an info packet: packet i is sent at time send_times[i].
-        self.send_times = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
-        self.arrival_times = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
+        self.send_times = FIFO_Store(env, capacity=capacity, memory_size=float('inf'), debug=False)
+        self.arrival_times = FIFO_Store(env, capacity=capacity, memory_size=float('inf'), debug=False)
         # Time of decoding of each packet: packet i is decoded at time dec_times[i].
-        self.dec_times = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
-        self.semi_dec_times = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
-        self.semi_dec_times.put(1) # For the MIXALL case - semi-dec here is nonsense.
+        self.dec_times = FIFO_Store(env, capacity=capacity, memory_size=float('inf'), debug=False)
+        self.semi_dec_times = FIFO_Store(env, capacity=capacity, memory_size=float('inf'), debug=False)
+        self.semi_dec_times.put(1)  # For the MIXALL case - semi-dec here is nonsense.
         self.ct_type_hist = []
 
     def run(self, in_packet_info, in_packet_recep_flag, fb_packet):
@@ -111,7 +113,6 @@ class ACRLNC_Node_Mix_All():
         # Read FB and remove decoded packets from the pt buffer.
         self.update_pt_buffer_discard(fb_packet)
 
-        # TODO: Adina: Now - makes ct for receiver's node anyway because it creates the log file - Fix this.
         # Call the encoder to generate the output packet.
         if self.node_type != 'Receiver':
             self.output_packet_processing(in_packet_recep_flag, fb_packet, in_packet_info)
@@ -176,54 +177,75 @@ class ACRLNC_Node_Mix_All():
                 self.in_cur_fb = [ack_id, ack, dec_id]  # corresponding packet.
         return
 
-    # OG
-    # def update_pt_buffer_add(self, in_packet_info, in_packet_recep_flag):
-    #
-    #     # In packet info:
-    #     self.in_pt = in_packet_info
-    #
-    #     # Do not accept packets that contain nothing.
-    #     if isinstance(in_packet_info.nc_header, list):
-    #         if in_packet_info.nc_header[1][0] is None:
-    #             return
-    #     else:
-    #         if in_packet_info.nc_header is None:
-    #             return
-    #
-    #     if in_packet_recep_flag:
-    #         # Accept the packet:
-    #         # if self.in_pt.fec_type == 'NEW' or (self.in_pt.fec_type != 'NEW' and self.accept_fec()):
-    #         if self.node_index == 1 or 'NEW' in self.in_pt.fec_type or ('NEW' not in self.in_pt.fec_type and self.accept_fec()):
-    #
-    #             # Update the nc_id:
-    #             self.last_nc_id = self.last_nc_id + 1
-    #             self.in_pt.nc_serial = self.last_nc_id
-    #
-    #             # Insert the packet to the buffer:
-    #             self.pt_buffer.put(self.in_pt)
-    #
-    #             if self.node_type == 'Receiver':
-    #                 curr_info_wmax = self.in_pt.nc_header[1][1]
-    #                 if curr_info_wmax > self.last_dec_id_info:
-    #                     self.rece_buffer.put(self.in_pt)
-    #
-    #             self.last_packet_store = self.pt_buffer.fifo_items()[-1]
-    #
-    #             # Update Arrival time:
-    #             # if 'NEW' in self.in_pt.fec_type:
-    #             self.arrival_times.put(self.t)
-    #     return
-
-    # Poisson IN
     def update_pt_buffer_add(self, in_packet_info, in_packet_recep_flag):
+        if self.cfg.param.in_type == 'all':
+            self.update_pt_buffer_add_all(in_packet_info, in_packet_recep_flag)
+        elif self.cfg.param.in_type == 'ber':
+            self.update_pt_buffer_add_ber(in_packet_info, in_packet_recep_flag)
 
-        # poisson buffer distribution
+    # OG
+    def update_pt_buffer_add_all(self, in_packet_info, in_packet_recep_flag):
+
+        # In packet info:
+        self.in_pt = in_packet_info
+
+        # Do not accept packets that contain nothing.
+        if isinstance(in_packet_info.nc_header, list):
+            if in_packet_info.nc_header[1][0] is None:
+                return
+        else:
+            if in_packet_info.nc_header is None:
+                return
+
+        if in_packet_recep_flag:
+            # Accept the packet:
+            # if self.in_pt.fec_type == 'NEW' or (self.in_pt.fec_type != 'NEW' and self.accept_fec()):
+            if self.node_index == 1 or 'NEW' in self.in_pt.fec_type or (
+                    'NEW' not in self.in_pt.fec_type and self.accept_fec()):
+
+                # Update the nc_id:
+                self.last_nc_id = self.last_nc_id + 1
+                self.in_pt.nc_serial = self.last_nc_id
+
+                # Insert the packet to the buffer:
+                self.pt_buffer.put(self.in_pt)
+
+                # if self.node_type == 'Receiver':
+                #     curr_info_wmax = self.in_pt.nc_header[1][1]
+                #     if curr_info_wmax > self.last_dec_id_info:
+                # self.rece_buffer.put(self.in_pt)
+
+                if isinstance(self.in_pt.nc_header, list):
+                    if in_packet_info.nc_header[1][1] is not None:
+                        curr_info_wmax = self.in_pt.nc_header[1][1]
+
+                        if curr_info_wmax > self.last_dec_id_info:
+                            self.rece_buffer.put(self.in_pt)
+                else:
+                    if in_packet_info.nc_header is not None:
+                        curr_info_wmax = self.in_pt.nc_header
+
+                        if curr_info_wmax > self.last_dec_id_info:
+                            self.rece_buffer.put(self.in_pt)
+
+                self.last_packet_store = self.pt_buffer.fifo_items()[-1]
+
+                # Update Arrival time:
+                # if 'NEW' in self.in_pt.fec_type:
+                self.arrival_times.put(self.t)
+        return
+
+    # ber IN
+    def update_pt_buffer_add_ber(self, in_packet_info, in_packet_recep_flag):
+
+        # ber buffer distribution
         if self.node_type == 'Transmitter':
             self.trans_buffer.put(copy.deepcopy(in_packet_info))
-            lam = max(self.cfg.param.er_rates)
-            poisson = 1-np.random.poisson(lam=lam, size=1)
-            # print('poisson:', poisson)
-            if poisson > 0:
+            # lam = max(self.cfg.param.er_rates)
+            # ber = 1-np.random.ber(lam=lam, size=1)
+            ber = self.cfg.run_index.ber_process[self.t]
+            # print('ber:', ber)
+            if ber > 0:
                 self.in_pt = self.trans_buffer.fifo_items()[0]
                 self.trans_buffer.get()
             else:
@@ -246,7 +268,8 @@ class ACRLNC_Node_Mix_All():
         if in_packet_recep_flag:
             # Accept the packet:
             # if self.in_pt.fec_type == 'NEW' or (self.in_pt.fec_type != 'NEW' and self.accept_fec()):
-            if self.node_index == 1 or 'NEW' in self.in_pt.fec_type or ('NEW' not in self.in_pt.fec_type and self.accept_fec()):
+            if self.node_index == 1 or 'NEW' in self.in_pt.fec_type or (
+                    'NEW' not in self.in_pt.fec_type and self.accept_fec()):
 
                 # Update the nc_id:
                 self.last_nc_id = self.last_nc_id + 1
@@ -255,10 +278,23 @@ class ACRLNC_Node_Mix_All():
                 # Insert the packet to the buffer:
                 self.pt_buffer.put(self.in_pt)
 
-                if self.node_type == 'Receiver':
-                    curr_info_wmax = self.in_pt.nc_header[1][1]
-                    if curr_info_wmax > self.last_dec_id_info:
-                        self.rece_buffer.put(self.in_pt)
+                # if self.node_type == 'Receiver':
+                #     curr_info_wmax = self.in_pt.nc_header[1][1]
+                #     if curr_info_wmax > self.last_dec_id_info:
+                #         self.rece_buffer.put(self.in_pt)
+
+                if isinstance(self.in_pt.nc_header, list):
+                    if in_packet_info.nc_header[1][1] is not None:
+                        curr_info_wmax = self.in_pt.nc_header[1][1]
+
+                        if curr_info_wmax > self.last_dec_id_info:
+                            self.rece_buffer.put(self.in_pt)
+                else:
+                    if in_packet_info.nc_header is not None:
+                        curr_info_wmax = self.in_pt.nc_header
+
+                        if curr_info_wmax > self.last_dec_id_info:
+                            self.rece_buffer.put(self.in_pt)
 
                 self.last_packet_store = self.pt_buffer.fifo_items()[-1]
 
@@ -295,31 +331,40 @@ class ACRLNC_Node_Mix_All():
                     dec_id = self.pt_buffer.fifo_items()[-1].nc_header
 
             if dec_id > self.last_dec_id:  # decoding.
-                #If the node is a receiver, we need to remove the decoded packets from the buffer.
+                # If the node is a receiver, we need to remove the decoded packets from the buffer.
                 # Otherwise, we remove them in "update_pt_buffer_discard".
+
+                ### WE dont look at semi-dec for the mix version, It is probably calculated wrong.###
+
                 if self.node_type == 'Receiver':
                     for i in range(dec_id - self.last_dec_id):
                         if len(self.pt_buffer) == 1:
                             self.last_packet_store = self.pt_buffer.fifo_items()[0]
                         self.pt_buffer.get()
-                        # Log the semi-decoding time.
-                        self.semi_dec_times.put(self.t)
+                # Log the semi-decoding time.
+                self.semi_dec_times.put(self.t)
                 self.last_dec_id = dec_id
             #############################################################################
 
             ###### Real decode: use rece_buffer ######
-            if self.node_type == 'Receiver':  # Actual decoding at the receiver.
-                packets_info_num = self.update_packet_info_num()
-                dof_num = len(self.rece_buffer)
-                if dof_num >= packets_info_num > 0:  # and dof_num != 0:  # Enough DOF in the receiver node.
-                    # eliminate decoded packets and update their decode timing.
+            # if self.node_type == 'Receiver':  # Actual decoding at the receiver.
+            packets_info_num = self.update_packet_info_num()
+            dof_num = len(self.rece_buffer)
+            if dof_num >= packets_info_num > 0:  # and dof_num != 0:  # Enough DOF in the receiver node.
+                # eliminate decoded packets and update their decode timing.
+                # dec_id_info = self.rece_buffer.fifo_items()[-1].nc_header[1][1]
+
+                if isinstance(self.rece_buffer.fifo_items()[-1].nc_header, list):
                     dec_id_info = self.rece_buffer.fifo_items()[-1].nc_header[1][1]
-                    for i in range(dec_id_info - self.last_dec_id_info):
-                        self.dec_times.put(self.t)
-                        if self.cfg.param.print_flag:
-                            print('dec_id: ', dec_id_info)
-                        self.rece_buffer.get()
-                    self.last_dec_id_info = dec_id_info
+                else:
+                    dec_id_info = self.rece_buffer.fifo_items()[-1].nc_header
+
+                for i in range(dec_id_info - self.last_dec_id_info):
+                    self.dec_times.put(self.t)
+                    if self.cfg.param.print_flag:
+                        print('dec_id: ', dec_id_info)
+                    self.rece_buffer.get()
+                self.last_dec_id_info = dec_id_info
 
         # dec with a minus one to match the later +1 in the nc_serial field.
         self.out_cur_fb = [ack_id, ack, self.last_dec_id_info - 1]
@@ -335,7 +380,7 @@ class ACRLNC_Node_Mix_All():
 
         else:  # Propagate the feedback
             if self.in_cur_fb[1] is not None:
-                self.out_all_fb = [[self.in_cur_fb[0]], [self.in_cur_fb[1]], self.in_cur_fb[2]-1]
+                self.out_all_fb = [[self.in_cur_fb[0]], [self.in_cur_fb[1]], self.in_cur_fb[2] - 1]
             else:
                 self.out_all_fb = [[-1], [None], -3]
         return
@@ -350,7 +395,8 @@ class ACRLNC_Node_Mix_All():
             if self.node_type == 'Transmitter':
                 # Remove decoded packets from the buffer:
                 dec_id = self.in_cur_fb[2]
-                if dec_id >= 0 and self.out_cur_fb[2] >= -1:  # Indicator of decoding in the current node, meaning it is indeed OK to discard packets.
+                if dec_id >= 0 and self.out_cur_fb[
+                    2] >= -1:  # Indicator of decoding in the current node, meaning it is indeed OK to discard packets.
 
                     while len(self.pt_buffer) > 0:  # Buffer is not empty.
                         first_pt_id = self.pt_buffer.fifo_items()[0].nc_serial
@@ -426,7 +472,8 @@ class ACRLNC_Node_Mix_All():
         packets_info_num = 0
         if len(self.rece_buffer) > 0:  # Buffer is not empty.
             last_packet = self.rece_buffer.fifo_items()[-1]  # Last packet in the buffer.
-            last_packet_wmax = last_packet.nc_header[1][1]  ### THIS IS A CHANGE from the previous function
+            last_packet_wmax = last_packet.nc_header[1][1] if isinstance(last_packet.nc_header,
+                                                                         list) else last_packet.nc_header
 
             if self.last_dec_id_info == -1:  # First decoding.
                 packets_info_num = last_packet_wmax + 1
@@ -459,15 +506,32 @@ class ACRLNC_Node_Mix_All():
         # If some packets are acked as decoded - we do not need them in c_t
         # We may still want them to be in the pt_buffer
 
+        # pt_buffer_cut = self.pt_buffer
+        # if self.node_type == 'Transmitter':  # For MIXALL, do it only in the encoder
+        #     if self.in_cur_fb[2] is not None and self.in_cur_fb[2] >= 0:
+        #         self.fb_dec_id = self.in_cur_fb[2]
+        #     if self.fb_dec_id is not None:  # If some decoding was done.
+        #         pt_buffer_cut = FIFO_Store(self.env, capacity=float('inf'), memory_size=float('inf'), debug=False)
+        #         for i in range(len(self.pt_buffer)):
+        #             if self.pt_buffer.fifo_items()[i].nc_serial > self.fb_dec_id:
+        #                 pt_buffer_cut.put(self.pt_buffer.fifo_items()[i])
+        #     else:
+        #         pt_buffer_cut = self.pt_buffer
+
         pt_buffer_cut = self.pt_buffer
         if self.node_type == 'Transmitter':  # For MIXALL, do it only in the encoder
             if self.in_cur_fb[2] is not None and self.in_cur_fb[2] >= 0:
                 self.fb_dec_id = self.in_cur_fb[2]
             if self.fb_dec_id is not None:  # If some decoding was done.
-                pt_buffer_cut = FIFO_Store(self.env, capacity=float('inf'), memory_size=float('inf'), debug=False)
-                for i in range(len(self.pt_buffer)):
-                    if self.pt_buffer.fifo_items()[i].nc_serial > self.fb_dec_id:
-                        pt_buffer_cut.put(self.pt_buffer.fifo_items()[i])
+                # Set a specific capacity for the FIFO_Store
+                capacity = len(self.pt_buffer)
+                if capacity == 0:
+                    capacity = float('inf')
+                pt_buffer_cut = FIFO_Store(self.env, capacity=capacity, memory_size=capacity, debug=False)
+                items = self.pt_buffer.fifo_items()
+                for item in items:
+                    if item.nc_serial > self.fb_dec_id:
+                        pt_buffer_cut.put(item)
             else:
                 pt_buffer_cut = self.pt_buffer
 
@@ -483,35 +547,64 @@ class ACRLNC_Node_Mix_All():
         else:
             self.eps_hist.append(eps_mean)
 
-        # Info-packets header:
-        [info_wmin, info_wmax] = [None, None]
-        if ct is not None:  # meaning there is a packet to transmit. We want to pass its info-packets.
-            ct_wmin = ct[0]
-            ct_wmax = ct[1]
-            if len(self.pt_buffer) > 0:  # Buffer is not empty.
-                # find the info-packets for these nc_id:
-                for i in range(len(self.pt_buffer)):
+        # # Info-packets header:
+        # [info_wmin, info_wmax] = [None, None]
+        # if ct is not None:  # meaning there is a packet to transmit. We want to pass its info-packets.
+        #     ct_wmin = ct[0]
+        #     ct_wmax = ct[1]
+        #     if len(self.pt_buffer) > 0:  # Buffer is not empty.
+        #         # find the info-packets for these nc_id:
+        #         for i in range(len(self.pt_buffer)):
 
-                    # Not the first node:
-                    if isinstance(self.pt_buffer.fifo_items()[i].nc_header, list):
-                        if self.pt_buffer.fifo_items()[i].nc_serial == ct_wmin:
-                            info_wmin = self.pt_buffer.fifo_items()[i].nc_header[1][0]
-                        if self.pt_buffer.fifo_items()[i].nc_serial == ct_wmax:
-                            info_wmax = self.pt_buffer.fifo_items()[i].nc_header[1][1]
+        #             # Not the first node:
+        #             if isinstance(self.pt_buffer.fifo_items()[i].nc_header, list):
+        #                 if self.pt_buffer.fifo_items()[i].nc_serial == ct_wmin:
+        #                     info_wmin = self.pt_buffer.fifo_items()[i].nc_header[1][0]
+        #                 if self.pt_buffer.fifo_items()[i].nc_serial == ct_wmax:
+        #                     info_wmax = self.pt_buffer.fifo_items()[i].nc_header[1][1]
 
-                    # First node:
-                    else:
-                        if self.pt_buffer.fifo_items()[i].nc_serial == ct_wmin:
-                            info_wmin = self.pt_buffer.fifo_items()[i].nc_header
-                        if self.pt_buffer.fifo_items()[i].nc_serial == ct_wmax:
-                            info_wmax = self.pt_buffer.fifo_items()[i].nc_header
+        #             # First node:
+        #             else:
+        #                 if self.pt_buffer.fifo_items()[i].nc_serial == ct_wmin:
+        #                     info_wmin = self.pt_buffer.fifo_items()[i].nc_header
+        #                 if self.pt_buffer.fifo_items()[i].nc_serial == ct_wmax:
+        #                     info_wmax = self.pt_buffer.fifo_items()[i].nc_header
+
+        #         self.info_packet_nc_header = [info_wmin, info_wmax]
+
+        #     else:  # Buffer is empty.
+        #         # take from the memory.
+        #         info_wmin = self.info_packet_nc_header[0]
+        #         info_wmax = self.info_packet_nc_header[1]
+
+        if ct is not None:  # There's a packet to transmit
+            ct_wmin, ct_wmax = ct
+            info_wmin, info_wmax = None, None
+
+            if len(self.pt_buffer) > 0:  # Buffer is not empty
+                # Retrieve FIFO items once to avoid repeated calls
+                fifo_items = self.pt_buffer.fifo_items()
+
+                # Create a dictionary for quick lookup of nc_serial to nc_header
+                nc_serial_to_header = {
+                    item.nc_serial: item.nc_header for item in fifo_items
+                }
+
+                # Check for `ct_wmin` and `ct_wmax` in the dictionary
+                if ct_wmin in nc_serial_to_header:
+                    nc_header = nc_serial_to_header[ct_wmin]
+                    info_wmin = nc_header[1][0] if isinstance(nc_header, list) else nc_header
+
+                if ct_wmax in nc_serial_to_header:
+                    nc_header = nc_serial_to_header[ct_wmax]
+                    info_wmax = nc_header[1][1] if isinstance(nc_header, list) else nc_header
 
                 self.info_packet_nc_header = [info_wmin, info_wmax]
-
-            else:  # Buffer is empty.
-                # take from the memory.
-                info_wmin = self.info_packet_nc_header[0]
-                info_wmax = self.info_packet_nc_header[1]
+            else:  # Buffer is empty
+                # Take from memory
+                info_wmin, info_wmax = self.info_packet_nc_header
+        else:
+            info_wmin, info_wmax = None, None
 
         if info_wmax is None and self.node_type != 'Receiver':
             brk = 5

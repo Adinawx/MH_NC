@@ -13,16 +13,18 @@ class Encoder:
         self.rtt = cfg.param.rtt
         self.p_id = 0
 
+        capacity = self.cfg.param.T
+
         # memory holder of relevant packets. (get() when decoding happened):
         # ct = [p_id, fec_type,[w_min_t, w_max_t], ack/nack]
-        self.ct_buffer = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
+        self.ct_buffer = FIFO_Store(env, capacity=capacity, memory_size=float('inf'), debug=False)
 
         # tranmsmission line of packets. (get() every time step):
-        self.transmission_line = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
+        self.transmission_line = FIFO_Store(env, capacity=capacity, memory_size=float('inf'), debug=False)
 
-        self.pt_buffer = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
+        self.pt_buffer = FIFO_Store(env, capacity=capacity, memory_size=float('inf'), debug=False)
 
-        self.p_th = 0
+        self.p_th = 0.2
         self.ad = 0
         self.md = 0
         self.cnew = 0
@@ -33,9 +35,9 @@ class Encoder:
         self.fec_num = 0
         self.fec_flag = False
 
-        self.global_rtt = len(cfg.param.er_rates) * (cfg.param.rtt+1)
+        self.global_rtt = len(cfg.param.er_rates) * (cfg.param.rtt)
         # self.global_rtt = self.rtt
-        self.EOW = int(1.5*(self.global_rtt))
+        self.EOW = int(1.5 * (self.global_rtt + 1))
         self.bls_num = 0
         self.bls_flag = False
         self.bls_time_start = 0
@@ -57,7 +59,6 @@ class Encoder:
 
     def update_t(self):
         self.t += 1
-        return
 
     def update_w_min(self):
 
@@ -87,7 +88,7 @@ class Encoder:
         # self.cnew = len([ct for ct in all_ct if (ct[2] == 'NEW') and ct[3] is None])
 
         all_ct = self.ct_buffer.fifo_items()
-        self.ad = len([ct for ct in all_ct if('NEW' not in ct[2] and 'EMPTY' not in ct[2]) and ct[3] == 1])
+        self.ad = len([ct for ct in all_ct if ('NEW' not in ct[2] and 'EMPTY' not in ct[2]) and ct[3] == 1])
         self.md = len([ct for ct in all_ct if 'NEW' in ct[2] and ct[3] == 0])
         self.csame = len([ct for ct in all_ct if ('NEW' not in ct[2] and 'EMPTY' not in ct[2]) and ct[3] is None])
         self.cnew = len([ct for ct in all_ct if ('NEW' in ct[2]) and ct[3] is None])
@@ -98,7 +99,8 @@ class Encoder:
         eps_max = self.eps_max[0]
 
         # Calculate delta for mean and max eps_hist:
-        delta_mean = (self.md + eps_mean * self.cnew) - (self.ad + (1 - eps_mean) * self.csame) - self.p_th*(self.ad + (1 - eps_mean) * self.csame)
+        delta_mean = (self.md + eps_mean * self.cnew) - (self.ad + (1 - eps_mean) * self.csame) - self.p_th * (
+                    self.ad + (1 - eps_mean) * self.csame)
         delta_mean = np.round(delta_mean, 4)  # Avoid numerical errors.
 
         delta_max = (self.md + eps_max * self.cnew) - (self.ad + (1 - eps_max) * self.csame) - self.p_th
@@ -218,7 +220,7 @@ class Encoder:
 
             ######## Option 3: FEC by Time But with FEC Delay. Dis-Activate in main the other option ########
             # Activate FEC period every RTT timeslots.
-            begin_delay = self.curr_ch * int(self.global_rtt / 2 + 1) #+ 1
+            begin_delay = self.curr_ch * int(self.global_rtt / 2 + 1)  # + 1
             if (self.t - begin_delay) % self.global_rtt == 0 and self.t > 0:
                 self.fec_num = (self.cnew * eps_)  # number of FEC packets
                 if self.cfg.param.print_flag:
@@ -363,7 +365,7 @@ class Encoder:
 
             # number of FEC packets to send:
             eps_ = self.eps_mean[0]
-            self.fec_num = np.ceil(self.cnew * eps_)
+            self.fec_num = np.floor(self.cnew * eps_)
 
             if self.cfg.param.print_flag:
                 print(f"---fec_num={self.fec_num}, eps={eps_}, cnew={self.cnew}---")
@@ -391,13 +393,13 @@ class Encoder:
 
         # FB-FEC: ################################################################################
         if self.cfg.param.er_estimate_type == 'oracle':
-            self.criterion = (self.delta[0] > 0)
+            self.criterion = (self.delta[0] >= 0)
             if self.criterion:
                 self.type = 'FB-FEC'
                 return
         else:
             if in_fb[0] is not None:  # Feedback is arrived
-                self.criterion = (self.delta[0] > 0)  # True is FB-FEC
+                self.criterion = (self.delta[0] >= 0)  # True is FB-FEC
                 if self.criterion:
                     self.type = 'FB-FEC'
                     return
@@ -460,7 +462,8 @@ class Encoder:
             eps_max = self.eps_est.eps_estimate(t=self.t, ch=self.curr_ch, est_type='genie')
         else:
             eps_mean = self.eps_est.eps_estimate(t=self.t, ch=self.curr_ch, est_type='stat')
-            eps_max = self.eps_est.eps_estimate(t=self.t, ch=self.curr_ch, est_type='stat_max')
+            # eps_max = self.eps_est.eps_estimate(t=self.t, ch=self.curr_ch, est_type='stat_max')
+            eps_max = eps_mean
 
         if self.cfg.param.print_flag:
             print(f'eps_hist mean: {eps_mean[0]:.2f}')
@@ -490,13 +493,37 @@ class Encoder:
             #         self.fec_flag = 'Start FEC Transmit'
 
             # A feedback arrived: Update the corresponding ct ack
+            # ack = in_fb[1]
+            # if ack is not None:
+            #     for ind_c, ct in enumerate(self.ct_buffer.fifo_items()):
+            #         channels_num = len(self.cfg.param.er_rates)
+            #         if ct[0] == self.p_id - int(self.global_rtt + 2):  # 2 instead of + channels_num + 1
+            #             self.ct_buffer.fifo_items()[ind_c][3] = ack
+            #             break
+
+            # ack = in_fb[1]
+            # if ack is not None:
+            #     items = self.ct_buffer.fifo_items()
+            #     target_id = self.p_id - int(self.global_rtt + 2)
+
+            #     # Create a dictionary for quick lookup
+            #     nc_serial_to_index = {ct[0]: ind_c for ind_c, ct in enumerate(items)}
+
+            #     if target_id in nc_serial_to_index:
+            #         items[nc_serial_to_index[target_id]][3] = ack
+
             ack = in_fb[1]
-            if ack is not None:
-                for ind_c, ct in enumerate(self.ct_buffer.fifo_items()):
-                    channels_num = len(self.cfg.param.er_rates)
-                    if ct[0] == self.p_id - int(self.global_rtt + 2):  # 2 instead of + channels_num + 1
-                        self.ct_buffer.fifo_items()[ind_c][3] = ack
-                        break
+            if self.curr_ch == 0:
+                # if ack is not None:  # If there is a feedback
+                if self.t >= self.global_rtt + 2 * (len(self.cfg.param.er_rates)):
+                    items = self.ct_buffer.fifo_items()
+                    target_id = self.p_id - (int(self.global_rtt) + 2 * (len(self.cfg.param.er_rates)))
+
+                    # Create a dictionary for quick lookup
+                    nc_serial_to_index = {ct[0]: ind_c for ind_c, ct in enumerate(items)}
+
+                    if target_id in nc_serial_to_index:
+                        items[nc_serial_to_index[target_id]][3] = ack
 
             # Update w_min:
             self.update_w_min()

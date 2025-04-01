@@ -1,8 +1,56 @@
 import numpy as np
 import os
-import matplotlib
-matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
+
+np.random.seed(0)
+
+
+def generate_poisson_events(rate, T):
+    in_rate = rate
+    if in_rate <= 0.3:
+        eps = 0.1
+    else:
+        eps = 0.4
+    rate += eps
+    num_events = np.random.ber(rate * T)
+    inter_arrival_times = np.random.exponential(1.0 / rate, num_events)
+    event_times = np.cumsum(inter_arrival_times)
+
+    # cut to two points after decimal point
+    event_times = np.round(event_times)
+    event_times = np.unique(event_times)
+    event_times = event_times[event_times < T]
+    print(f"Num events: {len(event_times)}")
+
+    # Apply the events to the time axis
+    slots_events = np.zeros(T)
+    slots_events[event_times.astype(int)] = 1
+    res_rate = np.sum(slots_events) / T
+
+    if res_rate < in_rate:
+        print("Error: res_rate < in_rate")
+
+    print(f"In Rate: {in_rate}")
+    print(f"Res Rate: {res_rate}")
+
+    return slots_events
+
+
+def save_series_as_txt(series, filename):
+    folder = os.path.dirname(filename)
+    if not os.path.exists(folder):
+        os.makedirs(folder)
+
+    np.savetxt(filename, series, fmt='%d')
+    print(f"Series saved to {filename}")
+
+
+def generate_and_save_multiple_series_for_rates(rates, T, N, base_filename):
+    for rate in rates:
+        for i in range(N):
+            series = generate_poisson_events(rate, T)
+            filename = f"{base_filename}\\rate_{rate}\\series_{i + 1}.txt"
+            save_series_as_txt(series, filename)
 
 
 def generate_erasure_series_BEC(length, erasure_prob):
@@ -91,6 +139,17 @@ def create_and_save_erasure_series(r, length, eps_list, main_path, channels_num,
                 if channel_type == "BEC":
                     series = generate_erasure_series_BEC(length, eps)
                 elif channel_type == "GE":
+                    # Set a new q:
+                    e_B = kwargs['erasure_prob_bad']
+                    e_G = kwargs['erasure_prob_good']
+                    p = kwargs['p']
+                    q = (p * (e_B - eps) / (eps - e_G))
+                    kwargs['q'] = q
+                    print(f"eps: {eps}")
+                    print(f"q: {q}")
+                    # Check if q is Inf:
+                    if q == np.inf:
+                        break
                     series = generate_erasure_series_GE(length, **kwargs)
                 else:
                     raise ValueError(f"Unsupported channel type: {channel_type}")
@@ -121,7 +180,7 @@ def read_erasure_series_for_eps(eps, r, channel_num, main_path):
 
     for i in range(r):
         # Create the filename based on the epsilon value and series index
-        filename = os.path.join(channel_path, f"GE_series_eps_{eps:.2f}_series_{i}.csv")
+        filename = os.path.join(channel_path, f"erasure_series_eps_{eps:.2f}_series_{i}.csv")
 
         if os.path.exists(filename):
             # Load the series from the file
@@ -134,7 +193,7 @@ def read_erasure_series_for_eps(eps, r, channel_num, main_path):
     return series_list
 
 
-def plot_erasure_series(series, eps):
+def plot_erasure_series(series_list, eps):
     """
     Plots the erasure series and displays the amount of erasures (zeros) in the legend.
 
@@ -147,74 +206,76 @@ def plot_erasure_series(series, eps):
     """
     plt.figure(figsize=(10, 6))
 
-    # Count the number of erasures (zeros)
-    num_erasures = np.sum(series == 0)
+    for i, series in enumerate(series_list, 1):
+        # Count the number of erasures (zeros)
+        num_erasures = np.sum(series == 0)
 
-    bursts = np.diff(series)
-    burts_indices = np.where(bursts != 0)[0]
-    burst_lengths = np.diff(burts_indices)
-    mean_burst_length = np.mean(burst_lengths)
-    std_burst_length = np.std(burst_lengths)
-
-    # Plot the series with markers
-    plt.plot(series[0: 1500])
+        # Plot the series with markers
+        plt.plot(series, label=f"Series {i}, Erasures: {num_erasures}")
 
     # Set plot title and labels
-    plt.title(f"")
+    plt.title(f"Erasure Series for eps_hist={eps}")
     plt.xlabel("Timestep")
     plt.ylabel("Value (0=Erasure, 1=Success)")
-    plt.grid(True)
+
+    # Add a legend
+    plt.legend()
 
     # Show the plot
     plt.show()
 
 
+# Generate ber events
+# rates = np.round(np.arange(0.1, 0.9, 0.1), 2)  # Rates from 0.1 to 0.8
+# T = 10000
+# N = 100
+# base_filename = r"C:\Users\adina\Technion\Research\MH_Project\Code\Data\ber_Events"
+# generate_and_save_multiple_series_for_rates(rates, T, N, base_filename)
+
+
 # Parameters for BEC
-r = 20  # Number of series to generate per epsilon
-channels_num = 5  # Number of channels to generate series for
+r = 100  # Number of series to generate per epsilon
+channels_num = 6  # Number of channels to generate series for
 length = 50000  # Length of each series
+eps_list = np.arange(0.1, 0.9, 0.1)  # Different erasure probabilities
 channel_type = "GE"
+
+# data_path = "/data/adina/MH_Project/Data/" # My Linux Server
+data_path = r"C:\Users\adina\Technion\Research\MH_Project\Code\Data" # My Local Windows
+
 
 # Generate and save BEC series
 if channel_type == "BEC":
-    eps_list = np.arange(0, 1.1, 0.1)  # Different erasure probabilities
-    main_path = "C:\\Users\\adina\\Technion\\Research\\MH_Project\\Code\\Data\\BEC"
+    main_path = os.path.join(data_path, "BEC")
     create_and_save_erasure_series(r, length, eps_list, main_path, channels_num, channel_type="BEC")
 
 elif channel_type == "GE":
 
     # Parameters for Gilbert-Elliot channel
-    p = 0.01  # Probability of transitioning from "good" to "bad"
-    q = 0.02  # Probability of transitioning from "bad" to "good"
-    erasure_prob_good = 0.1  # Erasure probability in the "good" state
+    p = 0.2  # Probability of transitioning from "good" to "bad" - (q)
+    q = 0.3  # Probability of transitioning from "bad" to "good" - (s)
+    erasure_prob_good = 0  # Erasure probability in the "good" state
     erasure_prob_bad = 1  # Erasure probability in the "bad" state
 
-    stat_good = q/(p+q)
-    stat_bad = p/(p+q)
-    erasure_prob = stat_good*erasure_prob_good + stat_bad*erasure_prob_bad
+    stat_good = q / (p + q)
+    stat_bad = p / (p + q)
+    erasure_prob = stat_good * erasure_prob_good + stat_bad * erasure_prob_bad
     print(f"Stationary distribution: good={stat_good:.2f}, bad={stat_bad:.2f}")
     print(f"Erasure probability: {erasure_prob:.2f}")
-    print("Average burst length: ", 1/q)
-    eps_list = [np.round(erasure_prob, 2)]
+    print(f"Average burst length: {1 / q:.2f}")
 
-    main_path = f"C:\\Users\\adina\\Technion\\Research\\MH_Project\\Code\\Data\\GE_p_{p}_q_{q}_g_{erasure_prob_good}_b_{erasure_prob_bad}"
+    main_path = os.path.join(data_path, f"GE_p_{p}_g_{erasure_prob_good}_b_{erasure_prob_bad}")
 
     # Generate and save GE series
-    # create_and_save_erasure_series(
-    #     r,
-    #     length,
-    #     eps_list,
-    #     main_path,
-    #     channels_num,
-    #     channel_type="GE",
-    #     p=p,
-    #     q=q,
-    #     erasure_prob_good=erasure_prob_good,
-    #     erasure_prob_bad=erasure_prob_bad,
-    # )
-
-    # Read and plot GE series
-    series = read_erasure_series_for_eps(eps_list[0], r, 0, main_path)
-    series = series[0]
-    plot_erasure_series(series, 0.4)
-
+    create_and_save_erasure_series(
+        r,
+        length,
+        eps_list,
+        main_path,
+        channels_num,
+        channel_type="GE",
+        p=p,
+        q=q,
+        erasure_prob_good=erasure_prob_good,
+        erasure_prob_bad=erasure_prob_bad,
+    )

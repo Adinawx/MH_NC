@@ -61,7 +61,7 @@ class AirInterface:
             return (random_gen() for _ in iter(int, 1))
 
         elif self.noise_type == 'erasure':
-            # random.seed(0) # ADINA - for debug
+            random.seed(0) # ADINA - for debug
             p_err = noise_dict['p_e'][0]
             random_gen = partial(random.choices, [0, 1], weights=[p_err, 1 - p_err])  # 0 - Erasure, 1 - Pass
             return (random_gen() for _ in iter(int, 1))

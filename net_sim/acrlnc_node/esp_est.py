@@ -10,7 +10,7 @@ class EpsEstimator:
         self.t = 0
         self.ch = 0
         self.rtt = cfg.param.rtt
-        self.feedback_mem_factor = 3  # factor*RTT = feedback memory
+        self.feedback_mem_factor = 0  # factor*RTT = feedback memory
 
         # memory holder of relevant packets. (get() when decoding happened):
         self.acks_tracker = FIFO_Store(env, capacity=float('inf'), memory_size=float('inf'), debug=False)
@@ -42,6 +42,7 @@ class EpsEstimator:
         # Contains all forward nodes
         acks = 1 - np.array(self.acks_tracker.fifo_items(), dtype=object)
         acks = acks[-memory:]  # Keep only the last memory packets
+
         if len(acks) > 0:
             max_len = max(arr.shape[0] for arr in acks)  # Find the longest array
             # Stack arrays with NaN padding to match the max length
@@ -51,6 +52,8 @@ class EpsEstimator:
 
             # Compute the mean across each position, ignoring NaNs
             eps = np.nanmean(padded, axis=0)
+
+            # eps = [np.round(e, 2) for e in eps]
         else:
             eps = [0.5]
 
@@ -58,9 +61,14 @@ class EpsEstimator:
 
     def stat_max(self):
 
-        # New - contains all forward nodes
+        memory = self.feedback_mem_factor * self.rtt
+
+        # Contains all forward nodes
         acks = 1 - np.array(self.acks_tracker.fifo_items(), dtype=object)
+        # acks = acks[-memory:]  # Keep only the last memory packets
+
         if len(acks) > 0:
+
             max_len = max(arr.shape[0] for arr in acks)  # Find the longest array
             # Stack arrays with NaN padding to match the max length
             padded = np.full((len(acks), max_len), np.nan)  # Create an empty array filled with NaN
@@ -68,11 +76,27 @@ class EpsEstimator:
                 padded[i, :arr.shape[0]] = arr
 
             # Compute the mean across each position, ignoring NaNs
-            all_eps_mean = np.nanmean(padded, axis=0)
-            v = self.rtt * (1 - all_eps_mean) * all_eps_mean  # variance for BEC
-            eps_max = all_eps_mean + self.cfg.param.sigma * np.sqrt(v) / self.rtt
+            eps = np.nanmean(padded, axis=0)
+            v = self.rtt * (1 - eps) * eps  # variance for BEC
+            eps_max = eps + self.cfg.param.sigma * np.sqrt(v) / self.rtt
         else:
-            eps_max = np.zeros(1)
+            eps_max = [0.5]
+
+        # # New - contains all forward nodes
+        # acks = 1 - np.array(self.acks_tracker.fifo_items(), dtype=object)
+        # if len(acks) > 0:
+        #     max_len = max(arr.shape[0] for arr in acks)  # Find the longest array
+        #     # Stack arrays with NaN padding to match the max length
+        #     padded = np.full((len(acks), max_len), np.nan)  # Create an empty array filled with NaN
+        #     for i, arr in enumerate(acks):  # Fill in the values
+        #         padded[i, :arr.shape[0]] = arr
+
+        #     # Compute the mean across each position, ignoring NaNs
+        #     all_eps_mean = np.nanmean(padded, axis=0)
+        #     v = self.rtt * (1 - all_eps_mean) * all_eps_mean  # variance for BEC
+        #     eps_max = all_eps_mean + self.cfg.param.sigma * np.sqrt(v) / self.rtt
+        # else:
+        #     eps_max = np.zeros(1)
         return eps_max
 
     def oracle(self, win_length=None, empty_indexes=None):
@@ -99,10 +123,10 @@ class EpsEstimator:
         # Iterate through each time step
         eps_mean = []
         for ch in range(self.ch, channels_num):
-            in_delay = 1  #int((ch + 1) * (self.cfg.param.rtt / 2)) -1 - ch*2
+            in_delay = 1  # int((ch + 1) * (self.cfg.param.rtt / 2)) -1 - ch*2
 
             # If current time step is greater than or equal to the delay for this series
-            if self.t >= 0: #in_delay:
+            if self.t >= 0:  # in_delay:
 
                 if win_length is None or win_length == 0:
                     win_length = self.cfg.param.rtt + 2
@@ -122,7 +146,7 @@ class EpsEstimator:
 
                 if end < len(series):
                     eps_mean.append(
-                        np.mean(1-series[start:end][mask[start:end]]))
+                        np.mean(1 - series[start:end][mask[start:end]]))
                 else:
                     print("Error: Genie Index out of bounds")
 
@@ -132,3 +156,4 @@ class EpsEstimator:
 
         eps = self.cfg.param.er_rates[self.ch:]
         return eps
+
