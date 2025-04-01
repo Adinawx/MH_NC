@@ -10,12 +10,12 @@ from random import expovariate
 import os
 import sys
 import simpy
-from net_sim.ns.packet.dist_generator import DistPacketGenerator
-from net_sim.ns.packet.sink import PacketSink
-from net_sim.ns.port.airinterface import AirInterface
-from net_sim.ns.port.port import Port
-from net_sim.ns.port.buffer_manager import BufferManeger
-from net_sim.ns.port.nc_enc import NCEncoder
+from ns.packet.dist_generator import DistPacketGenerator
+from ns.packet.sink import PacketSink
+from ns.port.airinterface import AirInterface
+from ns.port.port import Port
+from ns.port.buffer_manager import BufferManeger
+from ns.port.nc_enc import NCEncoder
 
 
 def combine_dicts(dict1, dict2):

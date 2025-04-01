@@ -4,38 +4,6 @@ import matplotlib.pyplot as plt
 
 np.random.seed(0)
 
-
-def generate_poisson_events(rate, T):
-    in_rate = rate
-    if in_rate <= 0.3:
-        eps = 0.1
-    else:
-        eps = 0.4
-    rate += eps
-    num_events = np.random.ber(rate * T)
-    inter_arrival_times = np.random.exponential(1.0 / rate, num_events)
-    event_times = np.cumsum(inter_arrival_times)
-
-    # cut to two points after decimal point
-    event_times = np.round(event_times)
-    event_times = np.unique(event_times)
-    event_times = event_times[event_times < T]
-    print(f"Num events: {len(event_times)}")
-
-    # Apply the events to the time axis
-    slots_events = np.zeros(T)
-    slots_events[event_times.astype(int)] = 1
-    res_rate = np.sum(slots_events) / T
-
-    if res_rate < in_rate:
-        print("Error: res_rate < in_rate")
-
-    print(f"In Rate: {in_rate}")
-    print(f"Res Rate: {res_rate}")
-
-    return slots_events
-
-
 def save_series_as_txt(series, filename):
     folder = os.path.dirname(filename)
     if not os.path.exists(folder):
@@ -43,15 +11,6 @@ def save_series_as_txt(series, filename):
 
     np.savetxt(filename, series, fmt='%d')
     print(f"Series saved to {filename}")
-
-
-def generate_and_save_multiple_series_for_rates(rates, T, N, base_filename):
-    for rate in rates:
-        for i in range(N):
-            series = generate_poisson_events(rate, T)
-            filename = f"{base_filename}\\rate_{rate}\\series_{i + 1}.txt"
-            save_series_as_txt(series, filename)
-
 
 def generate_erasure_series_BEC(length, erasure_prob):
     """
@@ -238,11 +197,10 @@ r = 100  # Number of series to generate per epsilon
 channels_num = 6  # Number of channels to generate series for
 length = 50000  # Length of each series
 eps_list = np.arange(0.1, 0.9, 0.1)  # Different erasure probabilities
-channel_type = "GE"
+channel_type = "BEC"
 
 # data_path = "/data/adina/MH_Project/Data/" # My Linux Server
-data_path = r"C:\Users\adina\Technion\Research\MH_Project\Code\Data" # My Local Windows
-
+data_path = r"C:\Users\adina\Technion\Research\MH_Project\Code\Data"  # My Local Windows
 
 # Generate and save BEC series
 if channel_type == "BEC":

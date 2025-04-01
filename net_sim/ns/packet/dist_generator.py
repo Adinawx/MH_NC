@@ -15,7 +15,7 @@ fb - feedback
 s_ff - generates the packets to be fed into the source node
 d_fb - generates the packets to be fed into the destination node (as dummy packets)
 """
-from net_sim.ns.packet.packet import Packet
+from ns.packet.packet import Packet
 
 
 class DistPacketGenerator:
