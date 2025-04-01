@@ -9,7 +9,7 @@ def save_bernoulli_series(folder_path, N, T, p):
 
     for i in range(1, N + 1):
         # Generate a binary series of length T with probability p
-        series = np.random.binomial(1, p, T)
+        series = np.random.binomial(1, p-0.1, T)
 
         # Create the file path
         file_path = os.path.join(folder_path, f"series_{i}.txt")
@@ -36,8 +36,6 @@ N = 100  # Number of series
 T = 10000  # Length of each series
 
 for p in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
-
-    p = p - 0.1  # To be less than capacity
 
     folder_path_ = os.path.join(folder_path, f"rate_{p}")
 
