@@ -4,13 +4,16 @@
 CFG = {
 
     "param": {
-        "rtt": [20],  # rtt
+
+        # Your Project Path:
         "project_folder": r"C:\Users\adina\Technion\Research\MH_Project\Code",  # Code folder (And data)
         "results_folder": r"C:\Users\adina\Technion\Research\MH_Project\Code\Results",  # results folder
         # "project_folder": r"/data/adina/MH_Project",  # Code folder (And data)
         # "results_folder": r"/data/adina/MH_Project/Results",  # results folder
+
+        # Run Input Parameters:
         "results_filename_base": "run1",  # results filename - must change each run
-        "results_filename": "",
+        "rtt": [20],  # rtt
         "T": 1000,  # number of timesteps in each rep
         "debug": False,  # debug flag
         "rep": 5,  # number of repetitions
@@ -20,12 +23,15 @@ CFG = {
         "er_load": "from_csv",  # erasure type: erasure, from_csv
         "er_type": "BEC", # erasure type: BEC, GE_p_0.01_g_0.1_b_1, GE_p_0.1_q_0.3_g_0.01_b_0.8, For the GE only one channel is going to be GE. GE_p_0.01_q_0.02_g_0.1_b_1
         "ge_channel": [1],  # GE channel index
-        "er_series_path": "",  # erasure series path
         "er_estimate_type": "stat",  # genie, stat, stat_max, oracle
         "sigma": 1,  # noise variance
         "print_flag": False,  # print flag, False, True
-        "prot_type": "",  # "MIXALL", "BS", "AC"
         "in_type": "ber",  # input type: ber, all
+
+        # Place holder for run - do not touch.
+        "results_filename": "",
+        "er_series_path": "",  # erasure series path
+        "prot_type": "",  # "MIXALL", "BS", "AC"
         "data_storage": None,  # data storage
 
     },
