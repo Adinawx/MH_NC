@@ -71,6 +71,24 @@ This repository contains the implementation of the **Blank Space AC-RLNC** algor
 >    - Must include all three: MIXALL, BS-EMPTY, AC-FEC
 >    - In this version must have SR-ARQ results (not included in GitHub)
 
+### Algorithm Variants
+Configure in `run_all.py/main_run()`
+1. Baseline: `MIXALL` -
+    - calls the `*_mix_all` functions in acrlnc folder.
+    - Implement AC-RLNC at the source only (H_0)
+    - Any intermediate node “mix all” the packets in the buffer and forwards 
+2. All other options inplement NET-AC-RLNC with different variants.
+    - calls the not mix_all functions in acrlnc folder.
+
+| Variant | Description |
+|---------|-------------|
+| `AC-FEC` | Both pause mechanisma are disabled (FEC instead of pause (Empty) in No-New No-FEC options). |
+| `AC-EMPTY` |No-New No-FEC enabled, Blank Space disabled |
+| `BS-FEC` | No-New No-FEC disabled, Blank Space enabled |
+| `BS-EMPTY` | Both pause mechanisms enabled (full algorithm) |
+
+
+
 ## Implementation Details
 
 ### Data
@@ -271,126 +289,9 @@ Configure via: `"er_estimate_type": "stat"`
        - AC-RLNC at source only (H₀)
        - Intermediate nodes perform full packet mixing
 
-### Algorithm Variants
 
-| Variant | Description |
-|---------|-------------|
-| `MIXALL` | Uses mix_all implementations |
-| `AC-FEC` | All transmissions contain coded packets |
-| `AC-EMPTY` | Empty-Buffer mechanism enabled, BS disabled |
-| `BS-FEC` | BS enabled, Empty-Buffer disabled |
-| `BS-EMPTY` | Both pause mechanisms enabled (full implementation) |
 
-Configure in `run_all.py/main_run()`
 
-## Core Operations
 
-### Node Processing Logic
 
-Each AC-RLNC node performs these main operations:
-
-1. **Buffer Management**
-
-2. **Packet Processing**
-   - **Reception**: `output_packet_processing()`
-     - Processes incoming packets
-     - Updates buffer state
-   
-   - **Buffer Updates**:
-     - `update_pt_buffer_add()`: Add new packets to buffer
-     - `update_pt_buffer_discard()`: Remove decoded packets
-     - Source packet generation:
-       - Continuous: `update_pt_buffer_add_all()`
-       - Bernoulli: `update_pt_buffer_add_ber()`
-   
-   - **FEC Handling**:
-     - `accept_fec()`: Determines whether to accept FEC packets
-
-3. **Feedback Mechanism**
-   - `decode_and_create_fb()`: Generates feedback
-   - Feedback format:
-     - `ack=1`: Semi-decoding successful
-     - `dec_id`: Last decoded packet index (in n-1 indices)
-   - **Implementation Note**: `dec_id` is initialized as -1 and incremented by 1
-     (stored in `self.out_fb.nc_serial` field)
-
-### Processing Flow
-
-```
-Receive Packet → Update Buffer → Attempt Decoding → 
-Generate Feedback → Determine Next Transmission
-```
-
-### Transmission Types
-
-1. **Full Blank Space AC-RLNC** (BS-EMPTY)
-   - Both pause mechanisms enabled:
-     - Empty-Buffer: Pauses when buffer empty
-     - Blank Space: Strategic transmission pausing
-
-2. **Mix-All** (MIXALL)
-   - Source performs AC-RLNC coding
-   - Intermediate nodes perform random linear mixing of all buffer packets
-
-## Configuration Parameters
-
-### Core Parameters
-
-| Parameter | Description | Notes |
-|-----------|-------------|-------|
-| `rtt` | Local RTT | Only single value works (e.g., `[20]`) |
-| `T` | Number of timesteps in each repetition | e.g., `1000` |
-| `rep` | Number of Monte Carlo repetitions | e.g., `5` |
-| `results_filename_base` | Base name for results | Must be unique for each run |
-| `debug` | Debug flag | Limited functionality |
-| `print_flag` | Enable running log | `True` or `False` |
-
-### Channel Configuration
-
-| Parameter | Description | Notes |
-|-----------|-------------|-------|
-| `er_rates` | Erasure rate for each channel | e.g., `[0.1, 0.2, 0.5, 0.4, 0.3]` |
-| `er_var_ind` | Indices to vary | Cannot be empty |
-| `er_var_values` | Values range to vary | Format: `[start, end, steps]` |
-| `er_load` | Erasure source | `erasure` (random) or `from_csv` (from files) |
-| `er_type` | Channel model | `BEC` or Gilbert-Elliot models |
-| `ge_channel` | GE channel index | Ignored if `er_type` is `BEC` |
-
-### Prediction Configuration
-
-| Parameter | Description | Notes |
-|-----------|-------------|-------|
-| `er_estimate_type` | Erasure estimation method | `genie`, `stat`, `stat_max`, `oracle` |
-| `sigma` | Noise variance | Used with `stat_max` |
-| `in_type` | Input packet generation | `ber` or `all` |
-
-### Path Configuration
-
-```
-"project_folder": "/path/to/Code",  # Code folder (includes Data)
-"results_folder": "/path/to/Code/Results",  # Results storage
-"results_filename": "",  # Auto-generated
-"er_series_path": "",  # Erasure series path
-"prot_type": "",  # "MIXALL", "BS", "AC"
-"data_storage": None  # Data storage reference
-```
-
-## Transmission Visualization
-
-### Transmission Logs
-
-Detailed packet transmission information is logged in `ff_log.txt`, containing:
-- Packet indices
-- Transmission types
-- Reception status
-- Decoding events
-
-### Transmission Toy Example
-
-![Transmission Example](https://raw.githubusercontent.com/username/blank-space/main/docs/images/transmission_example.png)
-
-The image above illustrates the basic transmission pattern with:
-- Coding window evolution
-- Feedback mechanism
-- Blank Space operation
 
