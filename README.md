@@ -47,6 +47,8 @@ This repository contains the implementation of the **Blank Space AC-RLNC** algor
     └── ...
 ```
 
+*Further details on the imlementation can be found in the .docx file.*
+
 ## Running the Code
 
 ### Initial Setup
@@ -144,5 +146,3 @@ These are stand-alone scripts, run by themselves.
 #### 5. acrlnc_node
 
 AC-RLNC encoder and decoder operations implementation
-
-Further details on the imlementation can be found in the attached .docx file.
